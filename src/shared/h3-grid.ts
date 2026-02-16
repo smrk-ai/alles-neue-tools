@@ -1,4 +1,4 @@
-import { polygonToCells, cellToLatLng, cellToParent } from 'h3-js';
+import { polygonToCells, cellToLatLng, cellToParent, cellToChildren, getResolution } from 'h3-js';
 import type { CityConfig, Hotspot } from './types.js';
 
 /**
@@ -53,6 +53,14 @@ export function mergeCells(
   // Remove covered parents, add hotspot cells instead
   const filtered = mainCells.filter((cell) => !coveredParents.has(cell));
   return [...filtered, ...hotspotCells];
+}
+
+/**
+ * Get the 7 child cells of an H3 cell at the next resolution level.
+ */
+export function getChildCells(cellId: string): string[] {
+  const res = getResolution(cellId);
+  return cellToChildren(cellId, res + 1);
 }
 
 /**

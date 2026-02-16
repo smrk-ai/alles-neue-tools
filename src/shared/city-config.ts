@@ -21,7 +21,7 @@ export const CITIES: Record<string, CityConfig> = {
           [108.340, 15.885], [108.325, 15.885],
           [108.325, 15.875],
         ],
-        resolution: 9,
+        resolution: 10,
       },
     ],
   },
