@@ -15,15 +15,6 @@ Discovery-Tools für newaround.com — was als nächstes gebaut wird und was ver
 
 ---
 
-## Phase 4 — Social Media Scouts
-
-| Tool | Beschreibung | Status |
-|------|-------------|--------|
-| Facebook Scout | Facebook Pages/Groups nach neuen Businesses in Hoi An durchsuchen | Geplant |
-| Instagram Scout | Instagram Location-Tags und Hashtags nach neuen Businesses scannen | Geplant |
-
----
-
 ## Verschoben / Nice-to-have
 
 | Tool | Grund für Verschiebung |
@@ -33,10 +24,3 @@ Discovery-Tools für newaround.com — was als nächstes gebaut wird und was ver
 | Da Nang Scan | Erst Hoi An perfektionieren, dann auf weitere Städte expandieren |
 
 ---
-
-## Erledigt
-
-| Phase | Was | Status |
-|-------|-----|--------|
-| Phase 0 | Shared Infrastructure (config, logger, h3-grid, delta-store, pipeline-client, tool-runner) | Erledigt |
-| Phase 2 | Google Maps Discovery Tool (Grid-Scan, Delta Detection, Lead Transform, Baseline 2.514 Places) | Erledigt |

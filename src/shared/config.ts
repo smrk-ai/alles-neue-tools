@@ -30,8 +30,10 @@ export const config = {
   },
   meta: {
     appId: optionalEnv('META_APP_ID'),
+    appSecret: optionalEnv('META_APP_SECRET'),
     userToken: optionalEnv('META_USER_ACCESS_TOKEN'),
     instagramToken: optionalEnv('META_INSTAGRAM_TOKEN'),
+    instagramUserId: optionalEnv('META_INSTAGRAM_USER_ID'),
     pageToken: optionalEnv('META_PAGE_ACCESS_TOKEN'),
     pageId: optionalEnv('META_PAGE_ID'),
   },
