@@ -20,17 +20,17 @@
     "db:types": "npx supabase gen types typescript --project-id yoezwzlqcvitkiwuuqvr > src/shared/database.types.ts"
   },
   "dependencies": {
-    "dotenv": "^16.4.0",
-    "h3-js": "^4.4.0",
+    "@supabase/supabase-js": "^2.90.0",
     "@turf/boolean-point-in-polygon": "^7.3.0",
     "@turf/distance": "^7.3.0",
-    "@supabase/supabase-js": "^2.90.0",
+    "cheerio": "^1.0.0",
+    "dotenv": "^17.3.1",
     "fast-xml-parser": "^5.0.0",
-    "cheerio": "^1.0.0"
+    "h3-js": "^4.4.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
+    "@types/node": "^25.2.3",
     "tsx": "^4.21.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.7.0"
   }
 }
