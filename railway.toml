@@ -2,5 +2,5 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "echo 'Tools ready. Trigger via cron or manual.'"
+startCommand = "echo 'Tools ready. Trigger via cron or manual.' && sleep infinity"
 restartPolicyType = "never"
