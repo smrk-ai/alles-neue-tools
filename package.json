@@ -1,0 +1,33 @@
+{
+  "name": "alles-neue-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "google-maps": "tsx src/google-maps/index.ts",
+    "facebook-scout": "tsx src/facebook-scout/index.ts",
+    "instagram-scout": "tsx src/instagram-scout/index.ts",
+    "alerts": "tsx src/google-alerts/index.ts",
+    "sitemap-miner": "tsx src/sitemap-miner/index.ts",
+    "osm-monitor": "tsx src/osm-monitor/index.ts",
+    "quick-entry": "tsx src/cli/quick-entry.ts",
+    "prompt-import": "tsx src/cli/prompt-import.ts",
+    "typecheck": "tsc --noEmit",
+    "test-foundation": "tsx src/shared/test-foundation.ts",
+    "db:types": "npx supabase gen types typescript --project-id yoezwzlqcvitkiwuuqvr > src/shared/database.types.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "h3-js": "^4.4.0",
+    "@turf/boolean-point-in-polygon": "^7.3.0",
+    "@turf/distance": "^7.3.0",
+    "@supabase/supabase-js": "^2.90.0",
+    "fast-xml-parser": "^5.0.0",
+    "cheerio": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.21.0",
+    "@types/node": "^22.0.0"
+  }
+}
