@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "google-maps": "tsx src/google-maps/index.ts",
     "facebook-scout": "tsx src/facebook-scout/index.ts",
