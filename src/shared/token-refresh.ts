@@ -260,7 +260,10 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+// Only run CLI when executed directly (not when imported)
+if (process.argv[1]?.includes('token-refresh')) {
+  main().catch((err) => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}

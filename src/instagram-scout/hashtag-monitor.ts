@@ -7,7 +7,8 @@ const log = createLogger('ig-hashtag');
 
 function getInstagramConfig(): { userId: string; token: string } {
   const userId = config.meta.instagramUserId;
-  const token = config.meta.instagramToken;
+  // Instagram Graph API (hashtag search) uses the User Token, not the IG Basic Display token
+  const token = config.meta.userToken;
 
   if (!userId) {
     throw new Error(
@@ -16,7 +17,7 @@ function getInstagramConfig(): { userId: string; token: string } {
   }
   if (!token) {
     throw new Error(
-      'Missing META_INSTAGRAM_TOKEN. Set it in .env',
+      'Missing META_USER_ACCESS_TOKEN. Set it in .env',
     );
   }
 
