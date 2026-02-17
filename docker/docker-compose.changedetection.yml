@@ -1,0 +1,45 @@
+# changedetection.io — Web Change Monitor
+#
+# Start:  docker compose -f docker/docker-compose.changedetection.yml up -d
+# Stop:   docker compose -f docker/docker-compose.changedetection.yml down
+# UI:     http://localhost:5000
+#
+# Nach dem Start:
+# 1. http://localhost:5000 oeffnen
+# 2. Settings → API → API Key notieren (fuer .env CHANGEDETECTION_API_KEY)
+# 3. "Add Watch" fuer jede URL (siehe src/changedetection/config.ts)
+# 4. Fetch Backend auf "Playwright Chromium/Chrome" setzen (fuer JS-Seiten)
+# 5. Watch UUID aus URL kopieren → in config.ts eintragen
+
+services:
+  changedetection:
+    image: ghcr.io/dgtlmoon/changedetection.io:latest
+    container_name: changedetection
+    hostname: changedetection
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - changedetection-data:/datastore
+    environment:
+      # Playwright Browser fuer JS-gerenderte Seiten (TripAdvisor, Booking, Foody)
+      - PLAYWRIGHT_DRIVER_URL=ws://browser-chrome:3000
+      - BASE_URL=http://localhost:5000
+    depends_on:
+      browser-chrome:
+        condition: service_started
+
+  # Headless Browser fuer JavaScript-Rendering
+  browser-chrome:
+    image: dgtlmoon/sockpuppetbrowser:latest
+    container_name: browser-chrome
+    hostname: browser-chrome
+    restart: unless-stopped
+    environment:
+      - SCREEN_WIDTH=1920
+      - SCREEN_HEIGHT=1024
+      - SCREEN_DEPTH=16
+      - MAX_CONCURRENT_CHROME_PROCESSES=5
+
+volumes:
+  changedetection-data:

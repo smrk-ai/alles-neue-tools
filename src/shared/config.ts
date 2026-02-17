@@ -40,6 +40,10 @@ export const config = {
   foursquare: {
     apiKey: optionalEnv('FOURSQUARE_API_KEY'),
   },
+  changedetection: {
+    baseUrl: optionalEnv('CHANGEDETECTION_BASE_URL', 'http://localhost:5000'),
+    apiKey: optionalEnv('CHANGEDETECTION_API_KEY'),
+  },
   env: (optionalEnv('TOOL_ENV', 'development') as 'development' | 'production'),
 } as const;
 

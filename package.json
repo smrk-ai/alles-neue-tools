@@ -13,6 +13,7 @@
     "alerts": "tsx src/google-alerts/index.ts",
     "sitemap-miner": "tsx src/sitemap-miner/index.ts",
     "osm-monitor": "tsx src/osm-monitor/index.ts",
+    "changedetection": "tsx src/changedetection/index.ts",
     "quick-entry": "tsx src/cli/quick-entry.ts",
     "prompt-import": "tsx src/cli/prompt-import.ts",
     "typecheck": "tsc --noEmit",
