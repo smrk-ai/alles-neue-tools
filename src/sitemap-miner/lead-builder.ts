@@ -3,7 +3,7 @@ import type { EnrichedEntry } from './types.js';
 
 export function buildLead(entry: EnrichedEntry, configId: string): PipelineLeadInput {
   return {
-    source: 'tripadvisor',
+    source: entry.platform,
     source_url: entry.url,
     source_id: entry.platformId,
     name: entry.name,

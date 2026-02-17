@@ -14,6 +14,8 @@ export type LeadSource =
   | 'osm'
   | 'foody'
   | 'tripadvisor'
+  | 'booking'
+  | 'agoda'
   | 'prompt_scout'
   | 'job_posting'
   | 'other';

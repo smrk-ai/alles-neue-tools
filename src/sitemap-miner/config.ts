@@ -1,55 +1,49 @@
 import type { SitemapSourceConfig } from './types.js';
 
-// TripAdvisor Location IDs:
-// g298082 = Hoi An
-// g298085 = Da Nang
-
 const SITEMAP_SOURCES: SitemapSourceConfig[] = [
-  // === HOI AN ===
+  // === BOOKING.COM ===
   {
-    id: 'ta-hoi-an-restaurants',
-    platform: 'tripadvisor',
-    city: 'Hoi An',
-    citySlug: 'hoi-an',
-    category: 'restaurants',
-    sitemapIndexUrl: 'https://www.tripadvisor.com/sitemap/2/en_US/sitemap_en_US_index.xml',
-    subSitemapPattern: /restaurant/i,
-    urlPattern: /Restaurant_Review-g298082/,
-    locationId: 'g298082',
-  },
-  {
-    id: 'ta-hoi-an-hotels',
-    platform: 'tripadvisor',
+    id: 'booking-hoi-an-hotels',
+    platform: 'booking',
     city: 'Hoi An',
     citySlug: 'hoi-an',
     category: 'hotels',
-    sitemapIndexUrl: 'https://www.tripadvisor.com/sitemap/2/en_US/sitemap_en_US_index.xml',
-    subSitemapPattern: /hotel/i,
-    urlPattern: /Hotel_Review-g298082/,
-    locationId: 'g298082',
-  },
-  // === DA NANG ===
-  {
-    id: 'ta-da-nang-restaurants',
-    platform: 'tripadvisor',
-    city: 'Da Nang',
-    citySlug: 'da-nang',
-    category: 'restaurants',
-    sitemapIndexUrl: 'https://www.tripadvisor.com/sitemap/2/en_US/sitemap_en_US_index.xml',
-    subSitemapPattern: /restaurant/i,
-    urlPattern: /Restaurant_Review-g298085/,
-    locationId: 'g298085',
+    sitemapIndexUrl: 'https://www.booking.com/sitembk-hotel-index.xml',
+    subSitemapPattern: /sitembk-hotel-en-us\.00(69|70)\.xml\.gz/,
+    urlPattern: /\/hotel\/vn\/.*(?:hoi-an|hoian)/i,
+    gzip: true,
   },
   {
-    id: 'ta-da-nang-hotels',
-    platform: 'tripadvisor',
+    id: 'booking-da-nang-hotels',
+    platform: 'booking',
     city: 'Da Nang',
     citySlug: 'da-nang',
     category: 'hotels',
-    sitemapIndexUrl: 'https://www.tripadvisor.com/sitemap/2/en_US/sitemap_en_US_index.xml',
-    subSitemapPattern: /hotel/i,
-    urlPattern: /Hotel_Review-g298085/,
-    locationId: 'g298085',
+    sitemapIndexUrl: 'https://www.booking.com/sitembk-hotel-index.xml',
+    subSitemapPattern: /sitembk-hotel-en-us\.00(69|70)\.xml\.gz/,
+    urlPattern: /\/hotel\/vn\/.*(?:da-nang|danang)/i,
+    gzip: true,
+  },
+  // === AGODA ===
+  {
+    id: 'agoda-hoi-an-hotels',
+    platform: 'agoda',
+    city: 'Hoi An',
+    citySlug: 'hoi-an',
+    category: 'hotels',
+    sitemapIndexUrl: 'https://www.agoda.com/sitemaps.xml',
+    subSitemapPattern: /pagetype_7/,
+    urlPattern: /\/hotel\/hoi-an-vn\.html/,
+  },
+  {
+    id: 'agoda-da-nang-hotels',
+    platform: 'agoda',
+    city: 'Da Nang',
+    citySlug: 'da-nang',
+    category: 'hotels',
+    sitemapIndexUrl: 'https://www.agoda.com/sitemaps.xml',
+    subSitemapPattern: /pagetype_7/,
+    urlPattern: /\/hotel\/da-nang-vn\.html/,
   },
 ];
 

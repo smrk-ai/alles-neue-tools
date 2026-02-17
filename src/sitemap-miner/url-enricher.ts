@@ -1,53 +1,55 @@
 import type { SitemapEntry, SitemapSourceConfig, EnrichedEntry } from './types.js';
 
-// TripAdvisor URL patterns:
-// Restaurant: /Restaurant_Review-g298082-d25123456-Reviews-Lotus_Kitchen-Hoi_An.html
-// Hotel:      /Hotel_Review-g298082-d25123456-Reviews-Sunrise_Hotel-Hoi_An.html
+// Booking.com: https://www.booking.com/hotel/vn/{hotel-slug}.html
+const BOOKING_PATTERN = /booking\.com\/hotel\/vn\/([^.]+)\.html/;
 
-const RESTAURANT_PATTERN = /Restaurant_Review-g(\d+)-d(\d+)-Reviews-(.+?)-[^/]+\.html/;
-const HOTEL_PATTERN = /Hotel_Review-g(\d+)-d(\d+)-Reviews-(.+?)-[^/]+\.html/;
+// Agoda: https://www.agoda.com/{hotel-slug}/hotel/{city}-{country}.html
+const AGODA_PATTERN = /agoda\.com\/([^/]+)\/hotel\/([^.]+)\.html/;
 
-function cleanSlug(slug: string): string {
-  return slug.replace(/_/g, ' ').trim();
+function toTitleCase(slug: string): string {
+  return slug
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
 }
 
 function enrichUrl(entry: SitemapEntry, config: SitemapSourceConfig): EnrichedEntry {
   const url = entry.loc;
 
-  // Try restaurant pattern
-  const restaurantMatch = url.match(RESTAURANT_PATTERN);
-  if (restaurantMatch) {
-    const [, , reviewId, nameSlug] = restaurantMatch;
+  // Booking.com
+  const bookingMatch = url.match(BOOKING_PATTERN);
+  if (bookingMatch) {
+    const [, hotelSlug] = bookingMatch;
     return {
       url,
-      platform: 'tripadvisor',
+      platform: 'booking',
       city: config.city,
       citySlug: config.citySlug,
-      category: 'restaurants',
-      name: cleanSlug(nameSlug),
-      platformId: `d${reviewId}`,
+      category: config.category,
+      name: toTitleCase(hotelSlug),
+      platformId: hotelSlug,
     };
   }
 
-  // Try hotel pattern
-  const hotelMatch = url.match(HOTEL_PATTERN);
-  if (hotelMatch) {
-    const [, , reviewId, nameSlug] = hotelMatch;
+  // Agoda
+  const agodaMatch = url.match(AGODA_PATTERN);
+  if (agodaMatch) {
+    const [, hotelSlug] = agodaMatch;
     return {
       url,
-      platform: 'tripadvisor',
+      platform: 'agoda',
       city: config.city,
       citySlug: config.citySlug,
-      category: 'hotels',
-      name: cleanSlug(nameSlug),
-      platformId: `d${reviewId}`,
+      category: config.category,
+      name: toTitleCase(hotelSlug),
+      platformId: hotelSlug,
     };
   }
 
-  // Fallback: use config category, no name extraction possible
+  // Fallback: use config values, no name extraction
   return {
     url,
-    platform: 'tripadvisor',
+    platform: config.platform,
     city: config.city,
     citySlug: config.citySlug,
     category: config.category,

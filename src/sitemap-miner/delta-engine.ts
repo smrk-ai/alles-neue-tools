@@ -5,13 +5,21 @@ import type { SitemapEntry } from './types.js';
 
 const log = createLogger('sitemap-miner');
 
-// Extract TripAdvisor review ID from URL (e.g. 'd25123456')
-const TA_ID_PATTERN = /-d(\d+)-/;
-
+// Extract a stable source ID from a URL based on the platform
 export function extractSourceId(url: string): string {
-  const match = url.match(TA_ID_PATTERN);
-  if (match) return `d${match[1]}`;
-  // Fallback: use URL as source ID
+  // Booking: /hotel/vn/{slug}.html → slug
+  const bookingMatch = url.match(/booking\.com\/hotel\/vn\/([^.]+)\.html/);
+  if (bookingMatch) return bookingMatch[1];
+
+  // Agoda: /{slug}/hotel/{city}.html → slug
+  const agodaMatch = url.match(/agoda\.com\/([^/]+)\/hotel\//);
+  if (agodaMatch) return agodaMatch[1];
+
+  // TripAdvisor (legacy): -d{id}-
+  const taMatch = url.match(/-d(\d+)-/);
+  if (taMatch) return `d${taMatch[1]}`;
+
+  // Fallback: use full URL
   return url;
 }
 

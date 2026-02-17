@@ -1,11 +1,12 @@
+import { gunzipSync } from 'node:zlib';
 import { XMLParser } from 'fast-xml-parser';
 import { createLogger } from '../shared/logger.js';
 import type { SitemapSourceConfig, SitemapEntry } from './types.js';
 
 const log = createLogger('sitemap-miner');
 
-const FETCH_TIMEOUT_MS = 30_000;
-const SUB_SITEMAP_CONCURRENCY = 3;
+const FETCH_TIMEOUT_MS = 60_000;
+const SUB_SITEMAP_CONCURRENCY = 2;
 const USER_AGENT = 'AllesNeueTools/1.0 (Sitemap Crawler; +https://newaround.com)';
 
 // XML parser for sitemap index: <sitemapindex><sitemap><loc>...</loc></sitemap></sitemapindex>
@@ -36,9 +37,20 @@ interface RawUrlEntry {
   lastmod?: string;
 }
 
+// --- Sub-sitemap cache (avoids re-downloading shared files) ---
+
+const fetchCache = new Map<string, string>();
+
 // --- Fetch helper ---
 
 async function fetchXml(url: string): Promise<string | null> {
+  // Check cache first (Booking.com Hoi An + Da Nang share the same sub-sitemaps)
+  const cached = fetchCache.get(url);
+  if (cached) {
+    log.debug(`Cache hit: ${url}`);
+    return cached;
+  }
+
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -52,7 +64,17 @@ async function fetchXml(url: string): Promise<string | null> {
       log.warn(`Fetch failed (${res.status}): ${url}`);
       return null;
     }
-    return await res.text();
+
+    let xml: string;
+    if (url.endsWith('.gz')) {
+      const buffer = Buffer.from(await res.arrayBuffer());
+      xml = gunzipSync(buffer).toString('utf-8');
+    } else {
+      xml = await res.text();
+    }
+
+    fetchCache.set(url, xml);
+    return xml;
   } catch (err) {
     log.warn(`Fetch error: ${url}`, { error: String(err) });
     return null;
@@ -165,6 +187,11 @@ export async function fetchSitemapEntries(
 
     for (const entries of batchResults) {
       allEntries.push(...entries);
+    }
+
+    // Log progress for large sitemap sets (e.g. Agoda with 132 sub-sitemaps)
+    if (relevantUrls.length > 10 && (i + SUB_SITEMAP_CONCURRENCY) % 20 === 0) {
+      log.info(`Progress: ${Math.min(i + SUB_SITEMAP_CONCURRENCY, relevantUrls.length)}/${relevantUrls.length} sub-sitemaps fetched (${allEntries.length} matches so far)`);
     }
   }
 
