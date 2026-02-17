@@ -10,7 +10,7 @@ import { extractLeads } from './lead-extractor.js';
 import type { AlertsToolOptions, ParsedFeedItem } from './types.js';
 
 const TOOL_SLUG = 'google-alerts';
-const DEFAULT_MIN_SCORE = 1;
+const DEFAULT_MIN_SCORE = 6;
 
 // --- Tool Class ---
 
