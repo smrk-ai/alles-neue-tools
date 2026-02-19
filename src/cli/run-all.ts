@@ -10,8 +10,7 @@
 //   npm run run-all -- --dry-run
 
 import 'dotenv/config';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '../shared/config.js';
+import { getSupabaseClient } from '../shared/supabase-client.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { createLogger } from '../shared/logger.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
@@ -72,7 +71,7 @@ interface ToolConfigRow {
 }
 
 async function getActiveTools(): Promise<ToolConfigRow[]> {
-  const db = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+  const db = getSupabaseClient();
   const { data, error } = await db
     .from('tool_configs')
     .select('slug, name, is_active, config')

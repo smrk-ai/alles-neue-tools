@@ -93,8 +93,8 @@ async function main() {
     check(`Stats for Hoi An: ${stats.total} total, ${JSON.stringify(stats.bySource)}`, stats.total >= 2);
 
     // Cleanup test entries
-    const { createClient } = await import('@supabase/supabase-js');
-    const db = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+    const { getSupabaseClient } = await import('./supabase-client.js');
+    const db = getSupabaseClient();
     await db.from('known_places').delete().eq('source', 'test');
     check('Test entries cleaned up', true);
   } catch (err) {

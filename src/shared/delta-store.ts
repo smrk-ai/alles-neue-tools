@@ -1,18 +1,8 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { config } from './config.js';
+import { getSupabaseClient } from './supabase-client.js';
 import { createLogger } from './logger.js';
 import type { DeltaEntry, DeltaMarkEntry, DeltaStats } from './types.js';
 
 const log = createLogger('delta-store');
-
-let client: SupabaseClient | null = null;
-
-function getClient(): SupabaseClient {
-  if (!client) {
-    client = createClient(config.supabase.url, config.supabase.serviceRoleKey);
-  }
-  return client;
-}
 
 const BATCH_SIZE = 100;
 
@@ -23,7 +13,7 @@ const BATCH_SIZE = 100;
 export async function findNew(entries: DeltaEntry[]): Promise<DeltaEntry[]> {
   if (entries.length === 0) return [];
 
-  const db = getClient();
+  const db = getSupabaseClient();
   const knownSet = new Set<string>();
 
   // Group by source for precise queries (avoids cross-source collisions)
@@ -67,7 +57,7 @@ export async function findNew(entries: DeltaEntry[]): Promise<DeltaEntry[]> {
 export async function markKnown(entries: DeltaMarkEntry[]): Promise<void> {
   if (entries.length === 0) return;
 
-  const db = getClient();
+  const db = getSupabaseClient();
 
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
@@ -106,7 +96,7 @@ export async function markPushed(
   sourceId: string,
   pipelineLeadId: string
 ): Promise<void> {
-  const db = getClient();
+  const db = getSupabaseClient();
 
   const { error } = await db
     .from('known_places')
@@ -124,15 +114,12 @@ export async function markPushed(
 }
 
 /**
- * Get statistics for a city.
+ * Get statistics for a city (server-side aggregation via RPC).
  */
 export async function getStats(city: string): Promise<DeltaStats> {
-  const db = getClient();
+  const db = getSupabaseClient();
 
-  const { data, error } = await db
-    .from('known_places')
-    .select('source')
-    .eq('city', city);
+  const { data, error } = await db.rpc('get_known_places_stats', { p_city: city });
 
   if (error) {
     log.error(`getStats failed`, { error: error.message, city });
@@ -140,10 +127,10 @@ export async function getStats(city: string): Promise<DeltaStats> {
   }
 
   const bySource: Record<string, number> = {};
+  let total = 0;
   for (const row of data || []) {
-    bySource[row.source] = (bySource[row.source] || 0) + 1;
+    bySource[row.source] = Number(row.count);
+    total += Number(row.count);
   }
-
-  const total = data?.length || 0;
   return { total, bySource };
 }
