@@ -9,3 +9,4 @@ dist/
 docs/
 .claude/
 .cursor/
+.mcp.json
