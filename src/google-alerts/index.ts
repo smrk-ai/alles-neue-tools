@@ -10,11 +10,11 @@ import { extractLeads } from './lead-extractor.js';
 import type { AlertsToolOptions, ParsedFeedItem } from './types.js';
 
 const TOOL_SLUG = 'google-alerts';
-const DEFAULT_MIN_SCORE = 6;
+const DEFAULT_MIN_SCORE = 8;
 
 // --- Tool Class ---
 
-class GoogleAlertsTool extends BaseTool {
+export class GoogleAlertsTool extends BaseTool {
   private minScore: number;
 
   constructor(options: AlertsToolOptions) {
@@ -138,6 +138,11 @@ class GoogleAlertsTool extends BaseTool {
       status: errors.length === 0 ? 'success' : 'partial',
     };
   }
+}
+
+/** Factory for orchestrator usage */
+export function createTool(options: { city: string; dryRun?: boolean; minScore?: number }): GoogleAlertsTool {
+  return new GoogleAlertsTool({ ...options, dryRun: options.dryRun ?? false, minScore: options.minScore ?? DEFAULT_MIN_SCORE, verbose: false });
 }
 
 // --- CLI Entry Point ---

@@ -17,7 +17,7 @@ const DEFAULT_DAYS = 7;
 
 // --- Tool Class ---
 
-class OsmMonitorTool extends BaseTool {
+export class OsmMonitorTool extends BaseTool {
   private days: number;
   private onlyNew: boolean;
 
@@ -150,6 +150,11 @@ class OsmMonitorTool extends BaseTool {
       status: errors.length === 0 ? 'success' : 'partial',
     };
   }
+}
+
+/** Factory for orchestrator usage */
+export function createTool(options: { city: string; dryRun?: boolean; days?: number }): OsmMonitorTool {
+  return new OsmMonitorTool({ ...options, dryRun: options.dryRun ?? false, days: options.days ?? DEFAULT_DAYS, onlyNew: false, verbose: false });
 }
 
 // --- CLI Entry Point ---

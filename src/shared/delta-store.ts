@@ -61,14 +61,19 @@ export async function markKnown(entries: DeltaMarkEntry[]): Promise<void> {
 
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
-    const rows = batch.map((e) => ({
-      source: e.source,
-      source_id: e.sourceId,
-      city: e.city,
-      h3_cell: e.h3Cell || null,
-      name: e.name || null,
-      last_seen: new Date().toISOString(),
-    }));
+    const rows = batch.map((e) => {
+      // Omit city field entirely if undefined/null so the DB default ('Hoi An') kicks in.
+      // Passing null explicitly violates the NOT NULL constraint.
+      const row: Record<string, unknown> = {
+        source: e.source,
+        source_id: e.sourceId,
+        h3_cell: e.h3Cell || null,
+        name: e.name || null,
+        last_seen: new Date().toISOString(),
+      };
+      if (e.city) row.city = e.city;
+      return row;
+    });
 
     const { error } = await db
       .from('known_places')

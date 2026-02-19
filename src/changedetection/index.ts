@@ -14,7 +14,7 @@ const DEFAULT_LOOKBACK_HOURS = 48; // Process changes from the last 48 hours
 
 // --- Tool Class ---
 
-class ChangeDetectionTool extends BaseTool {
+export class ChangeDetectionTool extends BaseTool {
   private forceCheck: boolean;
 
   constructor(options: CDToolOptions) {
@@ -187,6 +187,11 @@ class ChangeDetectionTool extends BaseTool {
       status: errors.length === 0 ? 'success' : 'partial',
     };
   }
+}
+
+/** Factory for orchestrator usage */
+export function createTool(options: { city: string; dryRun?: boolean; forceCheck?: boolean }): ChangeDetectionTool {
+  return new ChangeDetectionTool({ ...options, dryRun: options.dryRun ?? false, forceCheck: options.forceCheck ?? false, verbose: false });
 }
 
 // --- CLI Entry Point ---

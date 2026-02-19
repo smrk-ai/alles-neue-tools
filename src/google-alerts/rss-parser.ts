@@ -157,15 +157,30 @@ function parseEntry(entry: RawAtomEntry, feed: AlertFeedConfig): ParsedFeedItem 
 // --- Parallel Feed Fetcher ---
 
 export async function fetchAllFeeds(feeds: AlertFeedConfig[]): Promise<ParsedFeedItem[]> {
-  const results: ParsedFeedItem[] = [];
+  const allItems: ParsedFeedItem[] = [];
 
   for (let i = 0; i < feeds.length; i += CONCURRENCY) {
     const batch = feeds.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(batch.map(parseFeed));
     for (const items of batchResults) {
-      results.push(...items);
+      allItems.push(...items);
     }
   }
 
-  return results;
+  // Deduplicate by realUrl — same article from different feeds should only appear once.
+  // Keep the first occurrence (preserves feed/city assignment from the most specific feed).
+  const seen = new Set<string>();
+  const deduped: ParsedFeedItem[] = [];
+  for (const item of allItems) {
+    if (!seen.has(item.realUrl)) {
+      seen.add(item.realUrl);
+      deduped.push(item);
+    }
+  }
+
+  if (deduped.length < allItems.length) {
+    log.info(`URL dedup: ${allItems.length} → ${deduped.length} (removed ${allItems.length - deduped.length} cross-feed duplicates)`);
+  }
+
+  return deduped;
 }

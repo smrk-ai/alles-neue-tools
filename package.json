@@ -19,6 +19,8 @@
     "quick-entry": "tsx src/cli/quick-entry.ts",
     "import": "tsx src/cli/prompt-import.ts",
     "prompt-import": "tsx src/cli/prompt-import.ts",
+    "run-tool": "tsx src/cli/run-tool.ts",
+    "run-all": "tsx src/cli/run-all.ts",
     "typecheck": "tsc --noEmit",
     "test-foundation": "tsx src/shared/test-foundation.ts",
     "db:types": "npx supabase gen types typescript --project-id yoezwzlqcvitkiwuuqvr > src/shared/database.types.ts"

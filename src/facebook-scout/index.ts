@@ -12,7 +12,7 @@ const TOOL_SLUG = 'facebook-scout';
 
 // --- Tool Class ---
 
-class FacebookScoutTool extends BaseTool {
+export class FacebookScoutTool extends BaseTool {
   private checkTokens: boolean;
 
   constructor(options: FacebookToolOptions) {
@@ -126,6 +126,11 @@ class FacebookScoutTool extends BaseTool {
       status: errors.length === 0 ? 'success' : 'partial',
     };
   }
+}
+
+/** Factory for orchestrator usage */
+export function createTool(options: { city: string; dryRun?: boolean }): FacebookScoutTool {
+  return new FacebookScoutTool({ ...options, dryRun: options.dryRun ?? false, checkTokens: false, verbose: false });
 }
 
 // --- CLI Entry Point ---

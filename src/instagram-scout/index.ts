@@ -22,7 +22,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // --- Tool Class ---
 
-class InstagramScoutTool extends BaseTool {
+export class InstagramScoutTool extends BaseTool {
   private checkTokens: boolean;
   private showQuota: boolean;
 
@@ -211,6 +211,11 @@ class InstagramScoutTool extends BaseTool {
       status: errors.length === 0 ? 'success' : 'partial',
     };
   }
+}
+
+/** Factory for orchestrator usage */
+export function createTool(options: { city: string; dryRun?: boolean }): InstagramScoutTool {
+  return new InstagramScoutTool({ ...options, dryRun: options.dryRun ?? false, checkTokens: false, quota: false, verbose: false });
 }
 
 // --- CLI Entry Point ---

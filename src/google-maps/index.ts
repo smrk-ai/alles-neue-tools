@@ -12,7 +12,7 @@ const TOOL_SLUG = 'google-maps';
 
 // --- Tool Class ---
 
-class GoogleMapsTool extends BaseTool {
+export class GoogleMapsTool extends BaseTool {
   private baselineOnly: boolean;
 
   constructor(options: GoogleMapsToolOptions) {
@@ -117,6 +117,11 @@ class GoogleMapsTool extends BaseTool {
       status: errors.length === 0 ? 'success' : 'partial',
     };
   }
+}
+
+/** Factory for orchestrator usage */
+export function createTool(options: { city: string; dryRun?: boolean; baselineOnly?: boolean }): GoogleMapsTool {
+  return new GoogleMapsTool({ ...options, dryRun: options.dryRun ?? false, baselineOnly: options.baselineOnly ?? false, verbose: false });
 }
 
 // --- CLI Entry Point ---

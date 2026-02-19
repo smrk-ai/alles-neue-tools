@@ -14,7 +14,7 @@ const TOOL_SLUG = 'sitemap-miner';
 
 // --- Tool Class ---
 
-class SitemapMinerTool extends BaseTool {
+export class SitemapMinerTool extends BaseTool {
   private configId?: string;
 
   constructor(options: SitemapMinerOptions) {
@@ -147,6 +147,11 @@ class SitemapMinerTool extends BaseTool {
       status: errors.length === 0 ? 'success' : 'partial',
     };
   }
+}
+
+/** Factory for orchestrator usage */
+export function createTool(options: { city: string; dryRun?: boolean; configId?: string }): SitemapMinerTool {
+  return new SitemapMinerTool({ ...options, dryRun: options.dryRun ?? false, verbose: false });
 }
 
 // --- CLI Entry Point ---

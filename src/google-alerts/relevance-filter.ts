@@ -62,12 +62,17 @@ const NEGATIVE_SIGNALS = [
   'xuất hành', 'tuổi xông', 'chúc tết', 'mâm cơm', 'mùng',
   'tết nguyên đán', 'lunar new year', 'tet holiday',
   'new year celebration', 'countdown',
+  'bính ngọ', 'giáp thìn', 'ất tỵ', 'năm con', 'đón tết', 'về quê',
+  'lì xì', 'phong bao', 'bánh chưng', 'bánh tét', 'mai vàng',
+  'hoa đào', 'cây nêu', 'ông táo', 'trùng phùng',
   // Festivals / events
   'lễ hội', 'linh vật', 'đường hoa', 'hoa xuân',
+  'bắn pháo', 'ngắm pháo', 'diễu hành',
   // Politics / government / military
   'thủ tướng', 'chủ tịch', 'ubnd', 'quốc hội', 'chính phủ',
   'nhập ngũ', 'quân sự', 'tư pháp', 'lập pháp', 'đảng',
-  'giao thông', 'an ninh',
+  'giao thông', 'an ninh', 'nghị quyết', 'bộ trưởng', 'đại biểu',
+  'chiến lược', 'phúc lợi', 'tình nguyện',
   // Closures
   'closed', 'permanently closed', 'đóng cửa',
   // Listicles / travel guides
@@ -75,7 +80,9 @@ const NEGATIVE_SIGNALS = [
   // Other cities (not our target)
   'hà nội', 'ha noi', 'hanoi',
   'ho chi minh', 'hồ chí minh', 'saigon', 'sài gòn', 'tp hcm',
-  'an giang', 'cao bằng', 'cần thơ',
+  'an giang', 'cao bằng', 'cần thơ', 'hải phòng', 'huế', 'nha trang',
+  // Generic news noise
+  'kỷ lục', 'sưu tầm', 'cổ phục', 'dưa muối',
 ];
 
 // --- Domain bonus ---
@@ -157,6 +164,14 @@ export function scoreItem(item: ParsedFeedItem): ScoredItem {
   if (hasOpening && hasBusiness && hasLocation) {
     score += 3;
     signals.push('+3:jackpot');
+  }
+
+  // HARD REQUIREMENT: Without a business signal, cap score at 5.
+  // This prevents Opening + Location combos (Tet articles mentioning city names)
+  // from passing the threshold.
+  if (!hasBusiness && score > 5) {
+    signals.push(`cap:5(no-biz,was:${score})`);
+    score = 5;
   }
 
   return { item, score, signals };
