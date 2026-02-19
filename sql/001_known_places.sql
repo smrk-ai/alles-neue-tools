@@ -19,14 +19,15 @@ CREATE TABLE IF NOT EXISTS known_places (
 );
 
 -- Indexes für schnelle Lookups
-CREATE INDEX idx_known_places_source_id ON known_places(source, source_id);
-CREATE INDEX idx_known_places_city ON known_places(city);
-CREATE INDEX idx_known_places_first_seen ON known_places(first_seen);
+-- Note: (source, source_id) is already indexed by the UNIQUE constraint above
+CREATE INDEX IF NOT EXISTS idx_known_places_city ON known_places(city);
+CREATE INDEX IF NOT EXISTS idx_known_places_first_seen ON known_places(first_seen);
 
 -- RLS aktivieren (nur Service Role Key hat Zugriff)
 ALTER TABLE known_places ENABLE ROW LEVEL SECURITY;
 
--- Service Role darf alles
+-- Service Role darf alles (idempotent: drop first, then create)
+DROP POLICY IF EXISTS "Service role full access on known_places" ON known_places;
 CREATE POLICY "Service role full access on known_places"
   ON known_places FOR ALL
   TO service_role

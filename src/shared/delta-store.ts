@@ -26,24 +26,34 @@ export async function findNew(entries: DeltaEntry[]): Promise<DeltaEntry[]> {
   const db = getClient();
   const knownSet = new Set<string>();
 
-  // Process in batches
-  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-    const batch = entries.slice(i, i + BATCH_SIZE);
-    const sourceIds = batch.map((e) => e.sourceId);
+  // Group by source for precise queries (avoids cross-source collisions)
+  const bySource = new Map<string, DeltaEntry[]>();
+  for (const e of entries) {
+    const list = bySource.get(e.source) || [];
+    list.push(e);
+    bySource.set(e.source, list);
+  }
 
-    const { data, error } = await db
-      .from('known_places')
-      .select('source, source_id')
-      .in('source_id', sourceIds);
+  for (const [source, sourceEntries] of bySource) {
+    for (let i = 0; i < sourceEntries.length; i += BATCH_SIZE) {
+      const batch = sourceEntries.slice(i, i + BATCH_SIZE);
+      const sourceIds = batch.map((e) => e.sourceId);
 
-    if (error) {
-      log.error(`findNew query failed`, { error: error.message, batch: i });
-      throw error;
-    }
+      const { data, error } = await db
+        .from('known_places')
+        .select('source, source_id')
+        .eq('source', source)
+        .in('source_id', sourceIds);
 
-    if (data) {
-      for (const row of data) {
-        knownSet.add(`${row.source}::${row.source_id}`);
+      if (error) {
+        log.error(`findNew query failed`, { error: error.message, source, batch: i });
+        throw error;
+      }
+
+      if (data) {
+        for (const row of data) {
+          knownSet.add(`${row.source}::${row.source_id}`);
+        }
       }
     }
   }
