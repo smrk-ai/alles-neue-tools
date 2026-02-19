@@ -75,6 +75,7 @@ export function extractLead(scored: ScoredItem): PipelineLeadInput {
       source_title: item.sourceTitle ?? null,
       relevance_score: scored.score,
       relevance_signals: scored.signals,
+      is_jackpot: scored.signals.includes('+3:jackpot'),
     },
   };
 }
