@@ -1,7 +1,7 @@
 import { config } from './config.js';
 import { createLogger } from './logger.js';
 import { pushLead } from './pipeline-client.js';
-import { CITIES } from './city-config.js';
+import { loadCities, getCityBySlug } from './city-config.js';
 import { getAllScanCells, getCellCenter } from './h3-grid.js';
 import { findNew, markKnown, getStats } from './delta-store.js';
 
@@ -23,6 +23,9 @@ function check(name: string, ok: boolean, detail?: string) {
 async function main() {
   console.log('\n🔧 Phase 0 Foundation Test\n');
 
+  // Load cities from Supabase before any city-dependent tests
+  await loadCities();
+
   // --- 1. Config ---
   console.log('1. Config');
   check('PIPELINE_API_URL loaded', !!config.pipeline.apiUrl);
@@ -35,11 +38,11 @@ async function main() {
 
   // --- 2. H3 Grid ---
   console.log('\n2. H3 Grid');
-  const hoiAn = CITIES.hoi_an;
+  const hoiAn = getCityBySlug('hoi-an')!;
   const hoiAnCells = getAllScanCells(hoiAn);
   check(`Hoi An scan cells: ${hoiAnCells.length}`, hoiAnCells.length >= 20 && hoiAnCells.length <= 60);
 
-  const daNang = CITIES.da_nang;
+  const daNang = getCityBySlug('da-nang')!;
   const daNangCells = getAllScanCells(daNang);
   check(`Da Nang scan cells: ${daNangCells.length}`, daNangCells.length >= 80 && daNangCells.length <= 200);
 

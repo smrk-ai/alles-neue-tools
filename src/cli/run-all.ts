@@ -11,7 +11,7 @@
 
 import 'dotenv/config';
 import { getSupabaseClient } from '../shared/supabase-client.js';
-import { getCityBySlug, getAllCities } from '../shared/city-config.js';
+import { getCityBySlug, getAllCities, loadCities } from '../shared/city-config.js';
 import { createLogger } from '../shared/logger.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
 import type { BaseTool } from '../shared/tool-runner.js';
@@ -101,6 +101,9 @@ async function main() {
   if (opts.verbose) {
     process.env.TOOL_ENV = 'development';
   }
+
+  // Load cities from Supabase before resolving city slugs
+  await loadCities();
 
   // Get active tools from DB
   let tools = await getActiveTools();

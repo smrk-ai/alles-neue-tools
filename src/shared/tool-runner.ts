@@ -1,5 +1,6 @@
 import { config } from './config.js';
 import { createLogger, type Logger } from './logger.js';
+import { loadCities } from './city-config.js';
 import type { CityConfig, ToolRunOptions, ToolRunReport } from './types.js';
 
 // --- Tool Runs API Client ---
@@ -118,6 +119,7 @@ export abstract class BaseTool {
     timeoutId.unref();
 
     try {
+      await loadCities();
       const report = await this.run(city);
       const finishedAt = new Date();
 

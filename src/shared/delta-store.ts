@@ -78,7 +78,7 @@ export async function markKnown(entries: DeltaMarkEntry[]): Promise<void> {
 
     const { error } = await db
       .from('known_places')
-      .upsert(rows, { onConflict: 'source,source_id' });
+      .upsert(rows, { onConflict: 'city_id,source,source_id' });
 
     if (error) {
       log.error(`markKnown upsert failed`, { error: error.message, batch: i });
@@ -95,11 +95,12 @@ export async function markKnown(entries: DeltaMarkEntry[]): Promise<void> {
 export async function markPushed(
   source: string,
   sourceId: string,
-  pipelineLeadId: string
+  pipelineLeadId: string,
+  cityId?: string
 ): Promise<void> {
   const db = getSupabaseClient();
 
-  const { error } = await db
+  let query = db
     .from('known_places')
     .update({
       pushed_to_pipeline: true,
@@ -107,6 +108,10 @@ export async function markPushed(
     })
     .eq('source', source)
     .eq('source_id', sourceId);
+
+  if (cityId) query = query.eq('city_id', cityId);
+
+  const { error } = await query;
 
   if (error) {
     log.error(`markPushed failed`, { error: error.message, source, sourceId });

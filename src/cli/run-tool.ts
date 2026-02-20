@@ -8,7 +8,7 @@
 //   npm run run-tool -- --slug osm-monitor
 
 import 'dotenv/config';
-import { getCityBySlug, getAllCities } from '../shared/city-config.js';
+import { getCityBySlug, getAllCities, loadCities } from '../shared/city-config.js';
 import { getSupabaseClient } from '../shared/supabase-client.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
 import { BaseTool } from '../shared/tool-runner.js';
@@ -105,6 +105,9 @@ async function main() {
   if (opts.verbose) {
     process.env.TOOL_ENV = 'development';
   }
+
+  // Load cities from Supabase before resolving city slugs
+  await loadCities();
 
   // Fetch run_config from DB and merge with CLI args
   // Priority: explicit CLI flags (--dry-run, --baseline-only) > DB run_config > defaults
