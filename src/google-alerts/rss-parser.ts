@@ -13,6 +13,7 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: '@_',
   isArray: (_tagName, jPath) => jPath === 'feed.entry',
+  processEntities: false,
 });
 
 // --- URL Extraction ---
@@ -25,7 +26,13 @@ export function extractRealUrl(googleUrl: string): string {
   try {
     const parsed = new URL(googleUrl);
     const real = parsed.searchParams.get('url');
-    if (real) return real;
+    if (real) {
+      const realParsed = new URL(real);
+      if (!['http:', 'https:'].includes(realParsed.protocol)) {
+        return googleUrl;
+      }
+      return real;
+    }
   } catch {
     // not a valid URL
   }

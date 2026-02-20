@@ -15,6 +15,7 @@ const indexParser = new XMLParser({
   attributeNamePrefix: '@_',
   isArray: (_tagName, jPath) =>
     jPath === 'sitemapindex.sitemap',
+  processEntities: false,
 });
 
 // XML parser for urlset: <urlset><url><loc>...</loc><lastmod>...</lastmod></url></urlset>
@@ -23,6 +24,7 @@ const urlsetParser = new XMLParser({
   attributeNamePrefix: '@_',
   isArray: (_tagName, jPath) =>
     jPath === 'urlset.url',
+  processEntities: false,
 });
 
 // --- Internal types for raw XML shapes ---
