@@ -70,7 +70,7 @@ export async function pushLead(
   }
 }
 
-const PUSH_CONCURRENCY = 5;
+const PUSH_CONCURRENCY = 20;
 
 export async function pushLeads(
   leads: PipelineLeadInput[],

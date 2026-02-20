@@ -186,7 +186,10 @@ async function main() {
   process.exit(report.status === 'failed' ? 1 : 0);
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+// Only run CLI when executed directly, not when imported as module
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''))) {
+  main().catch((err) => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  });
+}
