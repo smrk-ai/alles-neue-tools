@@ -1,4 +1,5 @@
 import type { PipelineLeadInput } from '../shared/types.js';
+import { getCityIdBySlug } from '../shared/city-config.js';
 import type { EnrichedEntry } from './types.js';
 
 export function buildLead(entry: EnrichedEntry, configId: string): PipelineLeadInput {
@@ -8,6 +9,7 @@ export function buildLead(entry: EnrichedEntry, configId: string): PipelineLeadI
     source_id: entry.platformId,
     name: entry.name,
     city: entry.city,
+    city_id: getCityIdBySlug(entry.citySlug),
     category_guess: entry.category,
     raw_data: {
       platform: entry.platform,

@@ -52,7 +52,7 @@ function mapSingleCategory(category: string): CategoryGuess | null {
 
 export function transformToLead(
   place: FacebookPlace,
-  meta: { city: string; scanDate: string },
+  meta: { city: string; cityId: string; scanDate: string },
 ): PipelineLeadInput {
   return {
     source: 'facebook',
@@ -61,6 +61,7 @@ export function transformToLead(
     name: place.name || null,
     address: place.single_line_address || place.location?.street || null,
     city: meta.city,
+    city_id: meta.cityId,
     category_guess: mapFacebookCategory(place),
     phone: place.phone || null,
     website: place.website || null,

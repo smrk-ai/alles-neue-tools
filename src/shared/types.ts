@@ -24,13 +24,15 @@ export type CategoryGuess = 'restaurants' | 'bars' | 'cafes' | 'hotels';
 
 // --- Pipeline ---
 
+// Keep in sync with: alles-neue/lib/validations/pipeline.ts (Zod schema)
 export interface PipelineLeadInput {
   source: LeadSource;
   source_url?: string | null;
   source_id?: string | null;
   name?: string | null;
   address?: string | null;
-  city?: string;
+  city?: string | null;
+  city_id?: string;
   category_guess?: CategoryGuess | null;
   description?: string | null;
   photos?: string[] | null;
@@ -59,6 +61,7 @@ export interface Hotspot {
 }
 
 export interface CityConfig {
+  id: string; // UUID from cities table
   name: string;
   slug: string;
   country: string;

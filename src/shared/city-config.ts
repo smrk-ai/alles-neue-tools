@@ -3,6 +3,7 @@ import { getAllScanCells, generateScanCells, getHotspotCells, getCellCenter } fr
 
 export const CITIES: Record<string, CityConfig> = {
   hoi_an: {
+    id: '42990773-34b1-486f-8824-c0e61039fd6c',
     name: 'Hoi An',
     slug: 'hoi-an',
     country: 'VN',
@@ -26,6 +27,7 @@ export const CITIES: Record<string, CityConfig> = {
     ],
   },
   da_nang: {
+    id: '7b5e77b8-912b-4eea-b3dd-0efdaff4e300',
     name: 'Da Nang',
     slug: 'da-nang',
     country: 'VN',
@@ -45,6 +47,14 @@ export function getCityBySlug(slug: string): CityConfig | undefined {
 
 export function getAllCities(): CityConfig[] {
   return Object.values(CITIES);
+}
+
+export function getCityIdBySlug(slug: string): string | undefined {
+  return Object.values(CITIES).find((c) => c.slug === slug)?.id;
+}
+
+export function getCityIdByName(name: string): string | undefined {
+  return Object.values(CITIES).find((c) => c.name === name)?.id;
 }
 
 // Self-test when run directly

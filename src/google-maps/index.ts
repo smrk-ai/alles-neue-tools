@@ -66,6 +66,7 @@ export class GoogleMapsTool extends BaseTool {
       .map((d) =>
         transformToLead(d, {
           city: city.name,
+          cityId: city.id,
           h3Cell: findCellForPlace(d.id, scanResult.idsByCell),
           scanDate: deltaResult.scanDate,
           isBaseline: this.baselineOnly,

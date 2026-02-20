@@ -81,7 +81,7 @@ export class FacebookScoutTool extends BaseTool {
     // Step 5: Transform to leads
     const scanDate = new Date().toISOString();
     const leads = newPlaces.map((p) =>
-      transformToLead(p, { city: city.name, scanDate }),
+      transformToLead(p, { city: city.name, cityId: city.id, scanDate }),
     );
 
     // Step 6: Push to pipeline

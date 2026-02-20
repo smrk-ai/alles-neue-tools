@@ -4,6 +4,7 @@ import { mapCategory, mapCategoryFromPrimaryType } from './category-mapper.js';
 
 interface TransformMeta {
   city: string;
+  cityId: string;
   h3Cell?: string;
   scanDate: string;
   isBaseline: boolean;
@@ -23,6 +24,7 @@ export function transformToLead(
     name: place.displayName?.text ?? null,
     address: place.formattedAddress ?? null,
     city: meta.city,
+    city_id: meta.cityId,
     category_guess:
       mapCategoryFromPrimaryType(place.primaryType) ??
       mapCategory(place.types) ??

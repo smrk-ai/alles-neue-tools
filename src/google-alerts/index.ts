@@ -184,7 +184,7 @@ async function main() {
 
   // BaseTool.execute() needs a CityConfig. For 'all', use a synthetic config.
   const cityConfig: CityConfig = options.city === 'all'
-    ? { name: 'All Cities', slug: 'all', country: 'VN', boundary: [], resolution: 8, categories: [] }
+    ? { id: '', name: 'All Cities', slug: 'all', country: 'VN', boundary: [], resolution: 8, categories: [] }
     : getCityBySlug(options.city)!;
 
   const tool = new GoogleAlertsTool(options);

@@ -190,7 +190,7 @@ async function main() {
 
   // BaseTool.execute() needs a CityConfig
   const cityConfig: CityConfig = options.city === 'all'
-    ? { name: 'All Cities', slug: 'all', country: 'VN', boundary: [], resolution: 8, categories: [] }
+    ? { id: '', name: 'All Cities', slug: 'all', country: 'VN', boundary: [], resolution: 8, categories: [] }
     : getCityBySlug(options.city)!;
 
   const tool = new SitemapMinerTool(options);

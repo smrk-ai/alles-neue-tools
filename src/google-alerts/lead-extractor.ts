@@ -1,4 +1,5 @@
 import type { CategoryGuess, PipelineLeadInput } from '../shared/types.js';
+import { getCityIdBySlug } from '../shared/city-config.js';
 import type { ScoredItem } from './types.js';
 
 // --- Business Name Extraction ---
@@ -64,6 +65,7 @@ export function extractLead(scored: ScoredItem): PipelineLeadInput {
     source_url: item.realUrl,
     name: extractBusinessName(item.title),
     city: item.cityName,
+    city_id: getCityIdBySlug(item.citySlug),
     category_guess: item.categoryHint ?? guessCategory(combinedText),
     description: item.snippet.substring(0, 500) || null,
     website: item.realUrl || null,

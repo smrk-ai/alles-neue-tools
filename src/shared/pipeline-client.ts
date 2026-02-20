@@ -60,17 +60,6 @@ export async function pushLead(
       return { success: true, id: data.existing_id, duplicate: true };
     }
 
-    // Handle duplicate key constraint violations returned as 500 (server-side bug)
-    if (res.status === 500) {
-      const errorBody = await res.text();
-      if (errorBody.includes('duplicate key')) {
-        log.debug(`Duplicate (500): ${lead.name || lead.source_id || 'unnamed'}`);
-        return { success: true, duplicate: true };
-      }
-      log.error(`Push failed (500): ${errorBody}`);
-      return { success: false, error: `HTTP 500: ${errorBody}` };
-    }
-
     const errorBody = await res.text();
     log.error(`Push failed (${res.status}): ${errorBody}`);
     return { success: false, error: `HTTP ${res.status}: ${errorBody}` };
