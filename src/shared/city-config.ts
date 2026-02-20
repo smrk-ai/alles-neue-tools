@@ -43,6 +43,10 @@ export function getCityBySlug(slug: string): CityConfig | undefined {
   return Object.values(CITIES).find((c) => c.slug === slug);
 }
 
+export function getAllCities(): CityConfig[] {
+  return Object.values(CITIES);
+}
+
 // Self-test when run directly
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''))) {
   console.log('--- City Config Self-Test ---\n');

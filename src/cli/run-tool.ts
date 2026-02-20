@@ -8,7 +8,7 @@
 //   npm run run-tool -- --slug osm-monitor
 
 import 'dotenv/config';
-import { getCityBySlug } from '../shared/city-config.js';
+import { getCityBySlug, getAllCities } from '../shared/city-config.js';
 import { getSupabaseClient } from '../shared/supabase-client.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
 import { BaseTool } from '../shared/tool-runner.js';
@@ -74,17 +74,6 @@ const AVAILABLE_SLUGS = [
   'google-alerts', 'sitemap-miner', 'osm-monitor', 'changedetection',
 ];
 
-// --- Synthetic "all cities" config ---
-
-const ALL_CITIES_CONFIG: CityConfig = {
-  name: 'All Cities',
-  slug: 'all',
-  country: 'VN',
-  boundary: [],
-  resolution: 8,
-  categories: [],
-};
-
 // --- CLI ---
 
 function parseArgs() {
@@ -129,44 +118,66 @@ async function main() {
   console.log(`[run-tool] DB run_config: ${JSON.stringify(dbConfig)}`);
   console.log(`[run-tool] Effective: city=${effectiveCity}, dryRun=${effectiveDryRun}, baselineOnly=${effectiveBaselineOnly}`);
 
-  // Resolve city config
-  let cityConfig: CityConfig;
+  // Resolve cities to run
+  const modeLabel = effectiveDryRun ? ', DRY RUN' : effectiveBaselineOnly ? ', BASELINE ONLY' : '';
+  const factory = await loadToolFactory(opts.slug);
+
+  let cities: CityConfig[];
   if (effectiveCity === 'all') {
-    cityConfig = ALL_CITIES_CONFIG;
+    cities = getAllCities();
+    console.log(`\n▶ Running tool: ${opts.slug} (all cities: ${cities.map((c) => c.slug).join(', ')}${modeLabel})`);
   } else {
     const city = getCityBySlug(effectiveCity);
     if (!city) {
-      console.error(`Unknown city: "${effectiveCity}". Available: hoi-an, da-nang, all`);
+      console.error(`Unknown city: "${effectiveCity}". Available: ${getAllCities().map((c) => c.slug).join(', ')}, all`);
       process.exit(1);
     }
-    cityConfig = city;
+    cities = [city];
+    console.log(`\n▶ Running tool: ${opts.slug} (city: ${effectiveCity}${modeLabel})`);
   }
 
-  // Load and create tool
-  const modeLabel = effectiveDryRun ? ', DRY RUN' : effectiveBaselineOnly ? ', BASELINE ONLY' : '';
-  console.log(`\n▶ Running tool: ${opts.slug} (city: ${effectiveCity}${modeLabel})`);
+  // Run tool for each city and aggregate reports
+  const reports: ToolRunReport[] = [];
+  for (const cityConfig of cities) {
+    console.log(`\n  → ${cityConfig.name}`);
+    const tool = factory.createTool({
+      city: cityConfig.slug,
+      dryRun: effectiveDryRun,
+      baselineOnly: effectiveBaselineOnly,
+    });
+    const report = await tool.execute(cityConfig);
+    reports.push(report);
+  }
 
-  const factory = await loadToolFactory(opts.slug);
-  const tool = factory.createTool({
+  // Aggregate
+  const aggregated: ToolRunReport = {
+    toolSlug: opts.slug,
     city: effectiveCity,
-    dryRun: effectiveDryRun,
-    baselineOnly: effectiveBaselineOnly,
-  });
-  const report = await tool.execute(cityConfig);
+    startedAt: reports[0]?.startedAt ?? new Date(),
+    finishedAt: reports[reports.length - 1]?.finishedAt ?? new Date(),
+    durationMs: reports.reduce((sum, r) => sum + r.durationMs, 0),
+    leadsFound: reports.reduce((sum, r) => sum + r.leadsFound, 0),
+    leadsNew: reports.reduce((sum, r) => sum + r.leadsNew, 0),
+    leadsPushed: reports.reduce((sum, r) => sum + r.leadsPushed, 0),
+    errors: reports.flatMap((r) => r.errors),
+    status: reports.every((r) => r.status === 'failed') ? 'failed'
+      : reports.some((r) => r.status === 'failed') ? 'partial'
+      : 'success',
+  };
 
   // Print summary
   console.log(`\n--- ${opts.slug} Summary ---`);
-  console.log(`Status:       ${report.status}`);
-  console.log(`Found:        ${report.leadsFound}`);
-  console.log(`New:          ${report.leadsNew}`);
-  console.log(`Pushed:       ${report.leadsPushed}`);
-  console.log(`Duration:     ${(report.durationMs / 1000).toFixed(1)}s`);
-  if (report.errors.length > 0) {
-    console.log(`Errors (${report.errors.length}):`);
-    for (const e of report.errors) console.log(`  - ${e}`);
+  console.log(`Status:       ${aggregated.status}`);
+  console.log(`Found:        ${aggregated.leadsFound}`);
+  console.log(`New:          ${aggregated.leadsNew}`);
+  console.log(`Pushed:       ${aggregated.leadsPushed}`);
+  console.log(`Duration:     ${(aggregated.durationMs / 1000).toFixed(1)}s`);
+  if (aggregated.errors.length > 0) {
+    console.log(`Errors (${aggregated.errors.length}):`);
+    for (const e of aggregated.errors) console.log(`  - ${e}`);
   }
 
-  process.exit(report.status === 'failed' ? 1 : 0);
+  process.exit(aggregated.status === 'failed' ? 1 : 0);
 }
 
 main().catch((err) => {

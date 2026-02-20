@@ -11,7 +11,7 @@
 
 import 'dotenv/config';
 import { getSupabaseClient } from '../shared/supabase-client.js';
-import { getCityBySlug } from '../shared/city-config.js';
+import { getCityBySlug, getAllCities } from '../shared/city-config.js';
 import { createLogger } from '../shared/logger.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
 import type { BaseTool } from '../shared/tool-runner.js';
@@ -49,17 +49,6 @@ async function loadToolFactory(slug: string): Promise<ToolFactory> {
       throw new Error(`Unknown tool slug: "${slug}"`);
   }
 }
-
-// --- Synthetic "all cities" config ---
-
-const ALL_CITIES_CONFIG: CityConfig = {
-  name: 'All Cities',
-  slug: 'all',
-  country: 'VN',
-  boundary: [],
-  resolution: 8,
-  categories: [],
-};
 
 // --- Fetch active tools from DB ---
 
@@ -151,19 +140,44 @@ async function main() {
       const toolDryRun = opts.dryRun || runCfg.mode === 'dry_run';
       const toolBaselineOnly = runCfg.mode === 'baseline_only';
 
-      // Resolve city config per tool
-      let toolCityConfig: CityConfig;
+      // Resolve cities to run
+      let toolCities: CityConfig[];
       if (toolCity === 'all') {
-        toolCityConfig = ALL_CITIES_CONFIG;
+        toolCities = getAllCities();
       } else {
-        toolCityConfig = getCityBySlug(toolCity) || ALL_CITIES_CONFIG;
+        const resolved = getCityBySlug(toolCity);
+        if (!resolved) {
+          throw new Error(`Unknown city: "${toolCity}"`);
+        }
+        toolCities = [resolved];
       }
 
-      const tool = factory.createTool({ city: toolCity, dryRun: toolDryRun, baselineOnly: toolBaselineOnly });
-      const report = await tool.execute(toolCityConfig);
-      reports.push({ slug: toolConfig.slug, report });
+      // Run per city and aggregate
+      const toolReports: ToolRunReport[] = [];
+      for (const cityConfig of toolCities) {
+        if (toolCities.length > 1) console.log(`    → ${cityConfig.name}`);
+        const tool = factory.createTool({ city: cityConfig.slug, dryRun: toolDryRun, baselineOnly: toolBaselineOnly });
+        const report = await tool.execute(cityConfig);
+        toolReports.push(report);
+      }
 
-      console.log(`  ✓ ${report.status} — found: ${report.leadsFound}, new: ${report.leadsNew}, pushed: ${report.leadsPushed} (${(report.durationMs / 1000).toFixed(1)}s)`);
+      const aggregated: ToolRunReport = {
+        toolSlug: toolConfig.slug,
+        city: toolCity,
+        startedAt: toolReports[0]?.startedAt ?? new Date(),
+        finishedAt: toolReports[toolReports.length - 1]?.finishedAt ?? new Date(),
+        durationMs: toolReports.reduce((sum, r) => sum + r.durationMs, 0),
+        leadsFound: toolReports.reduce((sum, r) => sum + r.leadsFound, 0),
+        leadsNew: toolReports.reduce((sum, r) => sum + r.leadsNew, 0),
+        leadsPushed: toolReports.reduce((sum, r) => sum + r.leadsPushed, 0),
+        errors: toolReports.flatMap((r) => r.errors),
+        status: toolReports.every((r) => r.status === 'failed') ? 'failed'
+          : toolReports.some((r) => r.status === 'failed') ? 'partial'
+          : 'success',
+      };
+      reports.push({ slug: toolConfig.slug, report: aggregated });
+
+      console.log(`  ✓ ${aggregated.status} — found: ${aggregated.leadsFound}, new: ${aggregated.leadsNew}, pushed: ${aggregated.leadsPushed} (${(aggregated.durationMs / 1000).toFixed(1)}s)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  ✗ FATAL: ${msg}`);
