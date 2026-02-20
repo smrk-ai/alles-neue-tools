@@ -26,7 +26,7 @@ const TOOL_SLUGS = [
 ];
 
 interface ToolFactory {
-  createTool: (options: { city: string; dryRun?: boolean }) => BaseTool;
+  createTool: (options: { city: string; dryRun?: boolean; baselineOnly?: boolean }) => BaseTool;
 }
 
 async function loadToolFactory(slug: string): Promise<ToolFactory> {
@@ -113,19 +113,6 @@ async function main() {
     process.env.TOOL_ENV = 'development';
   }
 
-  // Resolve city config
-  let cityConfig: CityConfig;
-  if (opts.city === 'all') {
-    cityConfig = ALL_CITIES_CONFIG;
-  } else {
-    const city = getCityBySlug(opts.city);
-    if (!city) {
-      console.error(`Unknown city: "${opts.city}". Available: hoi-an, da-nang, all`);
-      process.exit(1);
-    }
-    cityConfig = city;
-  }
-
   // Get active tools from DB
   let tools = await getActiveTools();
 
@@ -157,8 +144,23 @@ async function main() {
 
     try {
       const factory = await loadToolFactory(toolConfig.slug);
-      const tool = factory.createTool({ city: opts.city, dryRun: opts.dryRun });
-      const report = await tool.execute(cityConfig);
+
+      // Extract per-tool run_config from DB, merge with CLI args
+      const runCfg = (toolConfig.config?.run_config as { city?: string; mode?: string }) || {};
+      const toolCity = (opts.city === 'all' && runCfg.city) ? runCfg.city : opts.city;
+      const toolDryRun = opts.dryRun || runCfg.mode === 'dry_run';
+      const toolBaselineOnly = runCfg.mode === 'baseline_only';
+
+      // Resolve city config per tool
+      let toolCityConfig: CityConfig;
+      if (toolCity === 'all') {
+        toolCityConfig = ALL_CITIES_CONFIG;
+      } else {
+        toolCityConfig = getCityBySlug(toolCity) || ALL_CITIES_CONFIG;
+      }
+
+      const tool = factory.createTool({ city: toolCity, dryRun: toolDryRun, baselineOnly: toolBaselineOnly });
+      const report = await tool.execute(toolCityConfig);
       reports.push({ slug: toolConfig.slug, report });
 
       console.log(`  ✓ ${report.status} — found: ${report.leadsFound}, new: ${report.leadsNew}, pushed: ${report.leadsPushed} (${(report.durationMs / 1000).toFixed(1)}s)`);

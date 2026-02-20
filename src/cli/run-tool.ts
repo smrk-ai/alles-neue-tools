@@ -9,13 +9,43 @@
 
 import 'dotenv/config';
 import { getCityBySlug } from '../shared/city-config.js';
+import { getSupabaseClient } from '../shared/supabase-client.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
 import { BaseTool } from '../shared/tool-runner.js';
 
 // --- Tool Registry ---
 
 interface ToolFactory {
-  createTool: (options: { city: string; dryRun?: boolean }) => BaseTool;
+  createTool: (options: { city: string; dryRun?: boolean; baselineOnly?: boolean }) => BaseTool;
+}
+
+// --- DB Run Config ---
+
+interface RunConfig {
+  city?: string;
+  mode?: string; // 'normal' | 'dry_run' | 'baseline_only'
+}
+
+async function fetchRunConfig(slug: string): Promise<RunConfig> {
+  try {
+    const db = getSupabaseClient();
+    const { data, error } = await db
+      .from('tool_configs')
+      .select('config')
+      .eq('slug', slug)
+      .single();
+
+    if (error || !data) {
+      console.warn(`[run-tool] Could not fetch run_config for "${slug}": ${error?.message || 'not found'}`);
+      return {};
+    }
+
+    const config = data.config as Record<string, unknown>;
+    return (config?.run_config as RunConfig) || {};
+  } catch (err) {
+    console.warn(`[run-tool] Failed to fetch run_config:`, err);
+    return {};
+  }
 }
 
 async function loadToolFactory(slug: string): Promise<ToolFactory> {
@@ -67,8 +97,9 @@ function parseArgs() {
 
   return {
     slug: flagValue('--slug'),
-    city: flagValue('--city') ?? 'hoi-an',
+    city: flagValue('--city') ?? 'all',
     dryRun: args.includes('--dry-run'),
+    baselineOnly: args.includes('--baseline-only'),
     verbose: args.includes('--verbose'),
   };
 }
@@ -77,7 +108,7 @@ async function main() {
   const opts = parseArgs();
 
   if (!opts.slug) {
-    console.error('Usage: npm run run-tool -- --slug <tool-slug> [--city <city>] [--dry-run]');
+    console.error('Usage: npm run run-tool -- --slug <tool-slug> [--city <city>] [--dry-run] [--baseline-only]');
     console.error(`Available tools: ${AVAILABLE_SLUGS.join(', ')}`);
     process.exit(1);
   }
@@ -86,24 +117,41 @@ async function main() {
     process.env.TOOL_ENV = 'development';
   }
 
+  // Fetch run_config from DB and merge with CLI args
+  // Priority: explicit CLI flags (--dry-run, --baseline-only) > DB run_config > defaults
+  // For city: if CLI passes "all" (entrypoint.sh default), DB config has priority
+  const dbConfig = await fetchRunConfig(opts.slug);
+
+  const effectiveCity = (opts.city === 'all' && dbConfig.city) ? dbConfig.city : opts.city;
+  const effectiveDryRun = opts.dryRun || dbConfig.mode === 'dry_run';
+  const effectiveBaselineOnly = opts.baselineOnly || dbConfig.mode === 'baseline_only';
+
+  console.log(`[run-tool] DB run_config: ${JSON.stringify(dbConfig)}`);
+  console.log(`[run-tool] Effective: city=${effectiveCity}, dryRun=${effectiveDryRun}, baselineOnly=${effectiveBaselineOnly}`);
+
   // Resolve city config
   let cityConfig: CityConfig;
-  if (opts.city === 'all') {
+  if (effectiveCity === 'all') {
     cityConfig = ALL_CITIES_CONFIG;
   } else {
-    const city = getCityBySlug(opts.city);
+    const city = getCityBySlug(effectiveCity);
     if (!city) {
-      console.error(`Unknown city: "${opts.city}". Available: hoi-an, da-nang, all`);
+      console.error(`Unknown city: "${effectiveCity}". Available: hoi-an, da-nang, all`);
       process.exit(1);
     }
     cityConfig = city;
   }
 
   // Load and create tool
-  console.log(`\n▶ Running tool: ${opts.slug} (city: ${opts.city}${opts.dryRun ? ', DRY RUN' : ''})`);
+  const modeLabel = effectiveDryRun ? ', DRY RUN' : effectiveBaselineOnly ? ', BASELINE ONLY' : '';
+  console.log(`\n▶ Running tool: ${opts.slug} (city: ${effectiveCity}${modeLabel})`);
 
   const factory = await loadToolFactory(opts.slug);
-  const tool = factory.createTool({ city: opts.city, dryRun: opts.dryRun });
+  const tool = factory.createTool({
+    city: effectiveCity,
+    dryRun: effectiveDryRun,
+    baselineOnly: effectiveBaselineOnly,
+  });
   const report = await tool.execute(cityConfig);
 
   // Print summary
