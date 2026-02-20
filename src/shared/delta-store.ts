@@ -67,6 +67,7 @@ export async function markKnown(entries: DeltaMarkEntry[]): Promise<void> {
       const row: Record<string, unknown> = {
         source: e.source,
         source_id: e.sourceId,
+        city_id: e.cityId,
         h3_cell: e.h3Cell || null,
         name: e.name || null,
         last_seen: new Date().toISOString(),

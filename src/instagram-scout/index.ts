@@ -179,6 +179,7 @@ export class InstagramScoutTool extends BaseTool {
         source: 'instagram' as const,
         sourceId: `ig_post_${post.id}`,
         city: city.name,
+        cityId: city.id,
         name: analysis.extractedInfo.possibleName || undefined,
       })),
     );

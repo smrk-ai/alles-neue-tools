@@ -3,6 +3,7 @@ import { createLogger } from '../shared/logger.js';
 import { graphApiGet, withRetry } from '../shared/meta-client.js';
 import { pushLead } from '../shared/pipeline-client.js';
 import { markKnown } from '../shared/delta-store.js';
+import { getCityIdByName } from '../shared/city-config.js';
 import type { PipelineLeadInput, CategoryGuess } from '../shared/types.js';
 import type { FacebookPlace } from './types.js';
 import { mapFacebookCategory } from './lead-transformer.js';
@@ -111,6 +112,7 @@ async function quickEntry(args: QuickEntryArgs): Promise<void> {
           source: 'facebook',
           sourceId: lead.source_id,
           city: lead.city || 'Hoi An',
+          cityId: lead.city_id || getCityIdByName(lead.city || 'Hoi An')!,
           name: lead.name || undefined,
         },
       ]);

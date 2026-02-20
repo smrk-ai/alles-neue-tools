@@ -1,5 +1,5 @@
 import { BaseTool } from '../shared/tool-runner.js';
-import { getCityBySlug } from '../shared/city-config.js';
+import { getCityBySlug, getCityIdBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
 import { findNew, markKnown } from '../shared/delta-store.js';
 import type { CityConfig, ToolRunReport, DeltaEntry, DeltaMarkEntry } from '../shared/types.js';
@@ -104,6 +104,7 @@ export class GoogleAlertsTool extends BaseTool {
         source: 'google_alert',
         sourceId: item.guid,
         city: item.cityName,
+        cityId: getCityIdBySlug(item.citySlug)!,
         name: item.title.substring(0, 100) || undefined,
       }));
 

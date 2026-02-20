@@ -94,6 +94,7 @@ export class FacebookScoutTool extends BaseTool {
         source: 'facebook' as const,
         sourceId: p.id,
         city: city.name,
+        cityId: city.id,
         name: p.name,
       })),
     );

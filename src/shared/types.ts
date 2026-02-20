@@ -101,6 +101,7 @@ export interface DeltaEntry {
 
 export interface DeltaMarkEntry extends DeltaEntry {
   city: string;
+  cityId: string;
   h3Cell?: string;
   name?: string;
 }

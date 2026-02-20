@@ -79,8 +79,8 @@ async function main() {
 
     // Mark as known
     await markKnown([
-      { source: 'test', sourceId: 'test-foundation-001', city: 'Hoi An', name: 'Test Place 1' },
-      { source: 'test', sourceId: 'test-foundation-002', city: 'Hoi An', name: 'Test Place 2' },
+      { source: 'test', sourceId: 'test-foundation-001', city: 'Hoi An', cityId: '42990773-34b1-486f-8824-c0e61039fd6c', name: 'Test Place 1' },
+      { source: 'test', sourceId: 'test-foundation-002', city: 'Hoi An', cityId: '42990773-34b1-486f-8824-c0e61039fd6c', name: 'Test Place 2' },
     ]);
     check('markKnown succeeded', true);
 

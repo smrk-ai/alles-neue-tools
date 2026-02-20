@@ -116,6 +116,7 @@ export class OsmMonitorTool extends BaseTool {
         source: 'osm',
         sourceId: `${el.type}/${el.id}`,
         city: city.name,
+        cityId: city.id,
         name: el.tags.name || el.tags['name:en'] || el.tags['name:vi'] || undefined,
       }));
 

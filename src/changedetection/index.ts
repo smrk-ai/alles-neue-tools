@@ -1,5 +1,5 @@
 import { BaseTool } from '../shared/tool-runner.js';
-import { getCityBySlug } from '../shared/city-config.js';
+import { getCityBySlug, getCityIdBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
 import { findNew, markKnown } from '../shared/delta-store.js';
 import type { CityConfig, ToolRunReport, DeltaEntry, DeltaMarkEntry } from '../shared/types.js';
@@ -152,6 +152,7 @@ export class ChangeDetectionTool extends BaseTool {
           source: watchConfig.leadSource,
           sourceId: `cd:${watchConfig.id}:${item.externalId}`,
           city: watchConfig.city,
+          cityId: getCityIdBySlug(watchConfig.citySlug)!,
           name: item.name?.substring(0, 100) || undefined,
         }));
 

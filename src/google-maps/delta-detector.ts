@@ -57,6 +57,7 @@ export async function markAsProcessed(
       source: 'google_maps' as const,
       sourceId: id,
       city: city.name,
+      cityId: city.id,
       h3Cell: cell ? cell[0] : undefined,
     };
   });

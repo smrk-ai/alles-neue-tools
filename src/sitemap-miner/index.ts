@@ -1,5 +1,5 @@
 import { BaseTool } from '../shared/tool-runner.js';
-import { getCityBySlug } from '../shared/city-config.js';
+import { getCityBySlug, getCityIdBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
 import { markKnown } from '../shared/delta-store.js';
 import type { CityConfig, ToolRunReport, DeltaMarkEntry } from '../shared/types.js';
@@ -112,6 +112,7 @@ export class SitemapMinerTool extends BaseTool {
           source: source.platform,
           sourceId: extractSourceId(e.loc),
           city: source.city,
+          cityId: getCityIdBySlug(source.citySlug)!,
           name: enriched.find((en) => en.url === e.loc)?.name || undefined,
         }));
 
