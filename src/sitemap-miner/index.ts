@@ -90,23 +90,7 @@ export class SitemapMinerTool extends BaseTool {
       // Step 2c: Enrich new URLs
       const enriched = enrichEntries(deltaResult.newEntries, source);
 
-      // Step 2d: Build leads
-      const leads = buildLeads(enriched, source.id);
-
-      // Step 2e: Push to pipeline
-      if (!this.dryRun && leads.length > 0) {
-        const results = await pushLeads(leads);
-        const pushed = results.filter((r) => r.success).length;
-        totalPushed += pushed;
-        this.log.info(`Pushed ${pushed}/${leads.length} leads for: ${source.id}`);
-      } else if (this.dryRun && leads.length > 0) {
-        this.log.info(`[DRY RUN] Would push ${leads.length} leads for: ${source.id}`);
-        for (const lead of leads) {
-          this.log.info(`  → ${lead.name ?? '(unnamed)'} | ${lead.category_guess ?? '?'} | ${lead.source_url}`);
-        }
-      }
-
-      // Step 2f: Mark all new entries as known
+      // Step 2d: Mark new entries as known BEFORE pushing (prevents death loop on SIGTERM)
       if (!this.dryRun) {
         const markEntries: DeltaMarkEntry[] = deltaResult.newEntries.map((e) => ({
           source: source.platform,
@@ -121,6 +105,22 @@ export class SitemapMinerTool extends BaseTool {
           const msg = `markKnown error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
           this.log.error(msg);
           errors.push(msg);
+        }
+      }
+
+      // Step 2e: Build leads
+      const leads = buildLeads(enriched, source.id);
+
+      // Step 2f: Push to pipeline
+      if (!this.dryRun && leads.length > 0) {
+        const results = await pushLeads(leads);
+        const pushed = results.filter((r) => r.success).length;
+        totalPushed += pushed;
+        this.log.info(`Pushed ${pushed}/${leads.length} leads for: ${source.id}`);
+      } else if (this.dryRun && leads.length > 0) {
+        this.log.info(`[DRY RUN] Would push ${leads.length} leads for: ${source.id}`);
+        for (const lead of leads) {
+          this.log.info(`  → ${lead.name ?? '(unnamed)'} | ${lead.category_guess ?? '?'} | ${lead.source_url}`);
         }
       }
     }

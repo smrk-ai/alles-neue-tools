@@ -60,6 +60,17 @@ export async function pushLead(
       return { success: true, id: data.existing_id, duplicate: true };
     }
 
+    // Handle duplicate key constraint violations returned as 500 (server-side bug)
+    if (res.status === 500) {
+      const errorBody = await res.text();
+      if (errorBody.includes('duplicate key')) {
+        log.debug(`Duplicate (500): ${lead.name || lead.source_id || 'unnamed'}`);
+        return { success: true, duplicate: true };
+      }
+      log.error(`Push failed (500): ${errorBody}`);
+      return { success: false, error: `HTTP 500: ${errorBody}` };
+    }
+
     const errorBody = await res.text();
     log.error(`Push failed (${res.status}): ${errorBody}`);
     return { success: false, error: `HTTP ${res.status}: ${errorBody}` };
@@ -70,13 +81,19 @@ export async function pushLead(
   }
 }
 
+const PUSH_CONCURRENCY = 5;
+
 export async function pushLeads(
   leads: PipelineLeadInput[],
   options?: { dryRun?: boolean }
 ): Promise<PipelineResult[]> {
   const results: PipelineResult[] = [];
-  for (const lead of leads) {
-    results.push(await pushLead(lead, options));
+  for (let i = 0; i < leads.length; i += PUSH_CONCURRENCY) {
+    const batch = leads.slice(i, i + PUSH_CONCURRENCY);
+    const batchResults = await Promise.all(
+      batch.map((lead) => pushLead(lead, options)),
+    );
+    results.push(...batchResults);
   }
   return results;
 }

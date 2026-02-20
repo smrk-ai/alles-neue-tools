@@ -6,7 +6,7 @@ import type { SitemapSourceConfig, SitemapEntry } from './types.js';
 const log = createLogger('sitemap-miner');
 
 const FETCH_TIMEOUT_MS = 60_000;
-const SUB_SITEMAP_CONCURRENCY = 2;
+const SUB_SITEMAP_CONCURRENCY = 5;
 const USER_AGENT = 'AllesNeueTools/1.0 (Sitemap Crawler; +https://newaround.com)';
 
 // XML parser for sitemap index: <sitemapindex><sitemap><loc>...</loc></sitemap></sitemapindex>

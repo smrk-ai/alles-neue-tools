@@ -55,6 +55,8 @@ async function updateToolRun(
 
 // --- Base Tool ---
 
+const MAX_EXECUTION_MS = 15 * 60 * 1000; // 15 minutes hard timeout
+
 export abstract class BaseTool {
   protected toolSlug: string;
   protected city: string;
@@ -88,6 +90,32 @@ export abstract class BaseTool {
     } else {
       this.log.warn(`Could not create tool run record – continuing without tracking`);
     }
+
+    // Graceful shutdown on SIGTERM (Railway container stop)
+    const onSigterm = async () => {
+      this.log.warn('SIGTERM received – marking run as error');
+      if (runId) {
+        await updateToolRun(runId, {
+          status: 'error',
+          error_message: 'Process killed (SIGTERM)',
+        });
+      }
+      process.exit(1);
+    };
+    process.on('SIGTERM', onSigterm);
+
+    // Hard timeout to prevent zombie runs
+    const timeoutId = setTimeout(async () => {
+      this.log.error(`Execution timeout reached (${MAX_EXECUTION_MS / 1000}s)`);
+      if (runId) {
+        await updateToolRun(runId, {
+          status: 'error',
+          error_message: `Execution timeout (${MAX_EXECUTION_MS / 60000}min)`,
+        });
+      }
+      process.exit(1);
+    }, MAX_EXECUTION_MS);
+    timeoutId.unref();
 
     try {
       const report = await this.run(city);
@@ -139,6 +167,9 @@ export abstract class BaseTool {
         errors: [errorMsg],
         status: 'failed',
       };
+    } finally {
+      clearTimeout(timeoutId);
+      process.removeListener('SIGTERM', onSigterm);
     }
   }
 }
