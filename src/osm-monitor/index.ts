@@ -99,10 +99,14 @@ export class OsmMonitorTool extends BaseTool {
 
     // Step 5: Push to pipeline
     let pushedCount = 0;
+    let pushResults: Awaited<ReturnType<typeof pushLeads>> = [];
     if (!this.dryRun && leads.length > 0) {
-      const results = await pushLeads(leads);
-      pushedCount = results.filter((r) => r.success).length;
+      pushResults = await pushLeads(leads);
+      pushedCount = pushResults.filter((r) => r.success).length;
       this.log.info(`Pushed ${pushedCount}/${leads.length} leads to pipeline`);
+      if (pushedCount < leads.length) {
+        this.log.warn(`${leads.length - pushedCount} pushes failed — will retry next run`);
+      }
     } else if (this.dryRun && leads.length > 0) {
       this.log.info(`[DRY RUN] Would push ${leads.length} leads. Skipping.`);
       for (const lead of leads) {
@@ -110,22 +114,28 @@ export class OsmMonitorTool extends BaseTool {
       }
     }
 
-    // Step 6: Mark all new elements as known in delta store
+    // Step 6: Mark only successfully pushed elements as known (failed ones retry next run)
     if (!this.dryRun) {
-      const markEntries: DeltaMarkEntry[] = newElements.map((el) => ({
-        source: 'osm',
-        sourceId: `${el.type}/${el.id}`,
-        city: city.name,
-        cityId: city.id,
-        name: el.tags.name || el.tags['name:en'] || el.tags['name:vi'] || undefined,
-      }));
+      const elementsToMark = pushResults.length > 0
+        ? newElements.filter((_, i) => pushResults[i]?.success)
+        : newElements;
 
-      try {
-        await markKnown(markEntries);
-      } catch (err) {
-        const msg = `markKnown error: ${err instanceof Error ? err.message : String(err)}`;
-        this.log.error(msg);
-        errors.push(msg);
+      if (elementsToMark.length > 0) {
+        const markEntries: DeltaMarkEntry[] = elementsToMark.map((el) => ({
+          source: 'osm',
+          sourceId: `${el.type}/${el.id}`,
+          city: city.name,
+          cityId: city.id,
+          name: el.tags.name || el.tags['name:en'] || el.tags['name:vi'] || undefined,
+        }));
+
+        try {
+          await markKnown(markEntries);
+        } catch (err) {
+          const msg = `markKnown error: ${err instanceof Error ? err.message : String(err)}`;
+          this.log.error(msg);
+          errors.push(msg);
+        }
       }
     }
 

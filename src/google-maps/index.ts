@@ -75,17 +75,29 @@ export class GoogleMapsTool extends BaseTool {
 
     // Step 5: Push to pipeline (unless baseline-only)
     let pushedCount = 0;
+    const failedPlaceIds = new Set<string>();
     if (!this.baselineOnly) {
       const results = await pushLeads(leads);
       pushedCount = results.filter((r) => r.success).length;
+      if (pushedCount < leads.length) {
+        this.log.warn(`${leads.length - pushedCount} pushes failed — will retry next run`);
+        results.forEach((r, i) => {
+          if (!r.success) failedPlaceIds.add(leads[i].source_id!);
+        });
+      }
     } else {
       this.log.info(
         `Baseline mode: Skipping pipeline push for ${leads.length} leads`,
       );
     }
 
-    // Step 6: Mark new IDs as known
-    await markAsProcessed(deltaResult.newIds, city, scanResult);
+    // Step 6: Mark new IDs as known (exclude failed pushes so they retry next run)
+    const idsToMark = failedPlaceIds.size > 0
+      ? deltaResult.newIds.filter((id) => !failedPlaceIds.has(id))
+      : deltaResult.newIds;
+    if (idsToMark.length > 0) {
+      await markAsProcessed(idsToMark, city, scanResult);
+    }
 
     // Step 7: Build report
     const scanErrors = scanResult.errors.map(

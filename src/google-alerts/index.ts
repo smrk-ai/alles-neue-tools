@@ -87,10 +87,17 @@ export class GoogleAlertsTool extends BaseTool {
 
     // Step 6: Push to pipeline
     let pushedCount = 0;
+    const failedGuids = new Set<string>();
     if (!this.dryRun && leads.length > 0) {
       const results = await pushLeads(leads);
       pushedCount = results.filter((r) => r.success).length;
       this.log.info(`Pushed ${pushedCount}/${leads.length} leads to pipeline`);
+      if (pushedCount < leads.length) {
+        this.log.warn(`${leads.length - pushedCount} pushes failed — will retry next run`);
+        results.forEach((r, i) => {
+          if (!r.success) failedGuids.add(scoredItems[i].item.guid);
+        });
+      }
     } else if (this.dryRun && leads.length > 0) {
       this.log.info(`[DRY RUN] Would push ${leads.length} leads. Skipping.`);
       for (const lead of leads) {
@@ -98,22 +105,28 @@ export class GoogleAlertsTool extends BaseTool {
       }
     }
 
-    // Step 7: Mark ALL new guids as known (even irrelevant ones)
+    // Step 7: Mark new guids as known (irrelevant + successfully pushed; NOT failed pushes)
     if (!this.dryRun) {
-      const markEntries: DeltaMarkEntry[] = newItems.map((item) => ({
-        source: 'google_alert',
-        sourceId: item.guid,
-        city: item.cityName,
-        cityId: getCityIdBySlug(item.citySlug)!,
-        name: item.title.substring(0, 100) || undefined,
-      }));
+      const itemsToMark = failedGuids.size > 0
+        ? newItems.filter((item) => !failedGuids.has(item.guid))
+        : newItems;
 
-      try {
-        await markKnown(markEntries);
-      } catch (err) {
-        const msg = `markKnown error: ${err instanceof Error ? err.message : String(err)}`;
-        this.log.error(msg);
-        errors.push(msg);
+      if (itemsToMark.length > 0) {
+        const markEntries: DeltaMarkEntry[] = itemsToMark.map((item) => ({
+          source: 'google_alert',
+          sourceId: item.guid,
+          city: item.cityName,
+          cityId: getCityIdBySlug(item.citySlug)!,
+          name: item.title.substring(0, 100) || undefined,
+        }));
+
+        try {
+          await markKnown(markEntries);
+        } catch (err) {
+          const msg = `markKnown error: ${err instanceof Error ? err.message : String(err)}`;
+          this.log.error(msg);
+          errors.push(msg);
+        }
       }
     }
 

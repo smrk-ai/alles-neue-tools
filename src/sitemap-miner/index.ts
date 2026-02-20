@@ -94,11 +94,15 @@ export class SitemapMinerTool extends BaseTool {
       const leads = buildLeads(enriched, source.id);
 
       // Step 2e: Push to pipeline FIRST (prevents data loss if push fails)
+      let pushResults: Awaited<ReturnType<typeof pushLeads>> = [];
       if (!this.dryRun && leads.length > 0) {
-        const results = await pushLeads(leads);
-        const pushed = results.filter((r) => r.success).length;
+        pushResults = await pushLeads(leads);
+        const pushed = pushResults.filter((r) => r.success).length;
         totalPushed += pushed;
         this.log.info(`Pushed ${pushed}/${leads.length} leads for: ${source.id}`);
+        if (pushed < leads.length) {
+          this.log.warn(`${leads.length - pushed} pushes failed for: ${source.id} — will retry next run`);
+        }
       } else if (this.dryRun && leads.length > 0) {
         this.log.info(`[DRY RUN] Would push ${leads.length} leads for: ${source.id}`);
         for (const lead of leads) {
@@ -106,22 +110,28 @@ export class SitemapMinerTool extends BaseTool {
         }
       }
 
-      // Step 2f: Mark entries as known AFTER successful push
+      // Step 2f: Mark only successfully pushed entries as known (failed ones retry next run)
       if (!this.dryRun) {
-        const markEntries: DeltaMarkEntry[] = deltaResult.newEntries.map((e) => ({
-          source: source.platform,
-          sourceId: extractSourceId(e.loc),
-          city: source.city,
-          cityId: getCityIdBySlug(source.citySlug)!,
-          name: enriched.find((en) => en.url === e.loc)?.name || undefined,
-        }));
+        const entriesToMark = pushResults.length > 0
+          ? deltaResult.newEntries.filter((_, i) => pushResults[i]?.success)
+          : deltaResult.newEntries;
 
-        try {
-          await markKnown(markEntries);
-        } catch (err) {
-          const msg = `markKnown error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
-          this.log.error(msg);
-          errors.push(msg);
+        if (entriesToMark.length > 0) {
+          const markEntries: DeltaMarkEntry[] = entriesToMark.map((e) => ({
+            source: source.platform,
+            sourceId: extractSourceId(e.loc),
+            city: source.city,
+            cityId: getCityIdBySlug(source.citySlug)!,
+            name: enriched.find((en) => en.url === e.loc)?.name || undefined,
+          }));
+
+          try {
+            await markKnown(markEntries);
+          } catch (err) {
+            const msg = `markKnown error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
+            this.log.error(msg);
+            errors.push(msg);
+          }
         }
       }
     }
