@@ -23,20 +23,22 @@ const parser = new XMLParser({
  * https://www.google.com/url?rct=j&sa=t&url=ACTUAL_URL&ct=...
  */
 export function extractRealUrl(googleUrl: string): string {
+  // processEntities:false leaves &amp; in XML attribute values — decode first
+  const cleaned = googleUrl.replace(/&amp;/g, '&');
   try {
-    const parsed = new URL(googleUrl);
+    const parsed = new URL(cleaned);
     const real = parsed.searchParams.get('url');
     if (real) {
       const realParsed = new URL(real);
       if (!['http:', 'https:'].includes(realParsed.protocol)) {
-        return googleUrl;
+        return cleaned;
       }
       return real;
     }
   } catch {
     // not a valid URL
   }
-  return googleUrl;
+  return cleaned;
 }
 
 // --- HTML Strip ---
