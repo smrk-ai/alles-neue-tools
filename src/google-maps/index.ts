@@ -1,11 +1,12 @@
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
-import type { CityConfig, ToolRunReport } from '../shared/types.js';
+import type { CategoryGuess, CityConfig, ToolRunReport } from '../shared/types.js';
 import { scanCity } from './grid-scanner.js';
 import { detectNew, markAsProcessed } from './delta-detector.js';
 import { getBasicDetailsBatch } from './places-client.js';
 import { transformToLead, findCellForPlace } from './lead-transformer.js';
+import { mapCategory, mapCategoryFromPrimaryType } from './category-mapper.js';
 import type { GoogleMapsToolOptions } from './types.js';
 
 const TOOL_SLUG = 'google-maps';
@@ -60,10 +61,13 @@ export class GoogleMapsTool extends BaseTool {
     // Step 3: Fetch details for new places (Basic tier)
     const details = await getBasicDetailsBatch(deltaResult.newIds);
 
-    // Build name lookup for delta store (known_places.name)
+    // Build name + category lookups for delta store
     const nameById = new Map<string, string>();
+    const categoryById = new Map<string, CategoryGuess>();
     for (const d of details) {
       if (d.displayName?.text) nameById.set(d.id, d.displayName.text);
+      const cat = mapCategoryFromPrimaryType(d.primaryType) ?? mapCategory(d.types);
+      if (cat) categoryById.set(d.id, cat);
     }
 
     // Step 4: Filter closed, transform to leads
@@ -102,7 +106,7 @@ export class GoogleMapsTool extends BaseTool {
       ? deltaResult.newIds.filter((id) => !failedPlaceIds.has(id))
       : deltaResult.newIds;
     if (idsToMark.length > 0) {
-      await markAsProcessed(idsToMark, city, scanResult, nameById);
+      await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById);
     }
 
     // Step 7: Build report

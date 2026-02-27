@@ -1,6 +1,6 @@
 import { findNew, markKnown } from '../shared/delta-store.js';
 import { createLogger } from '../shared/logger.js';
-import type { CityConfig } from '../shared/types.js';
+import type { CategoryGuess, CityConfig } from '../shared/types.js';
 import type { DeltaResult, GridScanResult } from './types.js';
 
 const log = createLogger('google-maps');
@@ -48,6 +48,7 @@ export async function markAsProcessed(
   city: CityConfig,
   scanResult: GridScanResult,
   nameById?: Map<string, string>,
+  categoryById?: Map<string, CategoryGuess>,
 ): Promise<void> {
   const entries = newIds.map((id) => {
     const cell = Object.entries(scanResult.idsByCell).find(([_, ids]) =>
@@ -61,6 +62,7 @@ export async function markAsProcessed(
       cityId: city.id,
       h3Cell: cell ? cell[0] : undefined,
       name: nameById?.get(id),
+      category: categoryById?.get(id),
     };
   });
 

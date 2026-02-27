@@ -73,6 +73,7 @@ export async function markKnown(entries: DeltaMarkEntry[]): Promise<void> {
         last_seen: new Date().toISOString(),
       };
       if (e.city) row.city = e.city;
+      if (e.category) row.category = e.category;
       return row;
     });
 
@@ -122,10 +123,13 @@ export async function markPushed(
 /**
  * Get statistics for a city (server-side aggregation via RPC).
  */
-export async function getStats(city: string): Promise<DeltaStats> {
+export async function getStats(city: string, category?: string): Promise<DeltaStats> {
   const db = getSupabaseClient();
 
-  const { data, error } = await db.rpc('get_known_places_stats', { p_city: city });
+  const { data, error } = await db.rpc('get_known_places_stats', {
+    p_city: city,
+    p_category: category ?? null,
+  });
 
   if (error) {
     log.error(`getStats failed`, { error: error.message, city });

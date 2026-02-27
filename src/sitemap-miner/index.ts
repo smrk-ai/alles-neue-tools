@@ -123,6 +123,7 @@ export class SitemapMinerTool extends BaseTool {
             city: source.city,
             cityId: getCityIdBySlug(source.citySlug)!,
             name: enriched.find((en) => en.url === e.loc)?.name || undefined,
+            category: source.category,
           }));
 
           try {

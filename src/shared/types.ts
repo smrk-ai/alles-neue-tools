@@ -106,6 +106,7 @@ export interface DeltaMarkEntry extends DeltaEntry {
   cityId: string;
   h3Cell?: string;
   name?: string;
+  category?: CategoryGuess;
 }
 
 export interface DeltaStats {
