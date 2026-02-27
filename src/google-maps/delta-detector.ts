@@ -47,6 +47,7 @@ export async function markAsProcessed(
   newIds: string[],
   city: CityConfig,
   scanResult: GridScanResult,
+  nameById?: Map<string, string>,
 ): Promise<void> {
   const entries = newIds.map((id) => {
     const cell = Object.entries(scanResult.idsByCell).find(([_, ids]) =>
@@ -59,6 +60,7 @@ export async function markAsProcessed(
       city: city.name,
       cityId: city.id,
       h3Cell: cell ? cell[0] : undefined,
+      name: nameById?.get(id),
     };
   });
 

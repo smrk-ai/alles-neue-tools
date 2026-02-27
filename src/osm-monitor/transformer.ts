@@ -23,6 +23,8 @@ export function transformElement(element: OverpassElement, city: string): Pipeli
     phone: element.tags.phone || element.tags['contact:phone'] || null,
     website: element.tags.website || element.tags['contact:website'] || null,
     google_maps_url: lat && lon ? `https://www.google.com/maps?q=${lat},${lon}` : null,
+    lat: lat ?? null,
+    lng: lon ?? null,
     raw_data: {
       osm_type: element.type,
       osm_id: element.id,

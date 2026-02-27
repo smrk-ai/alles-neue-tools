@@ -60,6 +60,12 @@ export class GoogleMapsTool extends BaseTool {
     // Step 3: Fetch details for new places (Basic tier)
     const details = await getBasicDetailsBatch(deltaResult.newIds);
 
+    // Build name lookup for delta store (known_places.name)
+    const nameById = new Map<string, string>();
+    for (const d of details) {
+      if (d.displayName?.text) nameById.set(d.id, d.displayName.text);
+    }
+
     // Step 4: Filter closed, transform to leads
     const leads = details
       .filter((d) => d.businessStatus !== 'CLOSED_PERMANENTLY')
@@ -96,7 +102,7 @@ export class GoogleMapsTool extends BaseTool {
       ? deltaResult.newIds.filter((id) => !failedPlaceIds.has(id))
       : deltaResult.newIds;
     if (idsToMark.length > 0) {
-      await markAsProcessed(idsToMark, city, scanResult);
+      await markAsProcessed(idsToMark, city, scanResult, nameById);
     }
 
     // Step 7: Build report

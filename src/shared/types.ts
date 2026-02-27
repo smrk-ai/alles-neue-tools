@@ -41,6 +41,8 @@ export interface PipelineLeadInput {
   facebook?: string | null;
   website?: string | null;
   phone?: string | null;
+  lat?: number | null;
+  lng?: number | null;
   raw_data?: Record<string, unknown> | null;
 }
 

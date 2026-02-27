@@ -66,6 +66,8 @@ export function transformToLead(
     phone: place.phone || null,
     website: place.website || null,
     facebook: place.link || `https://www.facebook.com/${place.id}`,
+    lat: place.location?.latitude ?? null,
+    lng: place.location?.longitude ?? null,
     raw_data: {
       fb_place_id: place.id,
       fb_category: place.category,
