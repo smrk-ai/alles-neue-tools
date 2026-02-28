@@ -33,6 +33,8 @@ export interface GridScanResult {
   totalIdsFound: number;
   uniqueIdsFound: number;
   idsByCategory: Record<string, number>;
+  /** Actual ID sets per search category (e.g. 'lodging' → Set of place IDs) */
+  idSetsByCategory: Record<string, string[]>;
   idsByCell: Record<string, string[]>;
   allUniqueIds: string[];
   durationMs: number;

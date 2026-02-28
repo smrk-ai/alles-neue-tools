@@ -1,13 +1,14 @@
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
+import { updateCategoryBulk } from '../shared/delta-store.js';
 import type { CategoryGuess, CityConfig, ToolRunReport } from '../shared/types.js';
 import { scanCity } from './grid-scanner.js';
 import { detectNew, markAsProcessed } from './delta-detector.js';
 import { getBasicDetailsBatch } from './places-client.js';
 import { transformToLead, findCellForPlace } from './lead-transformer.js';
 import { mapCategory, mapCategoryFromPrimaryType } from './category-mapper.js';
-import type { GoogleMapsToolOptions } from './types.js';
+import type { GoogleMapsToolOptions, GridScanResult } from './types.js';
 
 const TOOL_SLUG = 'google-maps';
 
@@ -29,7 +30,10 @@ export class GoogleMapsTool extends BaseTool {
     // Step 1: Grid scan (IDs Only = free)
     const scanResult = await scanCity(city);
 
-    // Step 2: Delta detection
+    // Step 2: Sync categories for ALL known entries based on scan data
+    await this.syncCategories(scanResult, city);
+
+    // Step 3: Delta detection
     const deltaResult = await detectNew(scanResult, city);
 
     if (deltaResult.newCount === 0) {
@@ -58,7 +62,7 @@ export class GoogleMapsTool extends BaseTool {
       `Found ${deltaResult.newCount} new places. Fetching details...`,
     );
 
-    // Step 3: Fetch details for new places (Basic tier)
+    // Step 4: Fetch details for new places (Basic tier)
     const details = await getBasicDetailsBatch(deltaResult.newIds);
 
     // Build name + category lookups for delta store
@@ -70,7 +74,7 @@ export class GoogleMapsTool extends BaseTool {
       if (cat) categoryById.set(d.id, cat);
     }
 
-    // Step 4: Filter closed, transform to leads
+    // Step 5: Filter closed, transform to leads
     const leads = details
       .filter((d) => d.businessStatus !== 'CLOSED_PERMANENTLY')
       .map((d) =>
@@ -83,7 +87,7 @@ export class GoogleMapsTool extends BaseTool {
         }),
       );
 
-    // Step 5: Push to pipeline (unless baseline-only)
+    // Step 6: Push to pipeline (unless baseline-only)
     let pushedCount = 0;
     const failedPlaceIds = new Set<string>();
     if (!this.baselineOnly) {
@@ -101,7 +105,7 @@ export class GoogleMapsTool extends BaseTool {
       );
     }
 
-    // Step 6: Mark new IDs as known (exclude failed pushes so they retry next run)
+    // Step 7: Mark new IDs as known (exclude failed pushes so they retry next run)
     const idsToMark = failedPlaceIds.size > 0
       ? deltaResult.newIds.filter((id) => !failedPlaceIds.has(id))
       : deltaResult.newIds;
@@ -109,7 +113,7 @@ export class GoogleMapsTool extends BaseTool {
       await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById);
     }
 
-    // Step 7: Build report
+    // Step 8: Build report
     const scanErrors = scanResult.errors.map(
       (e) => `${e.cellId.substring(0, 8)}/${e.category}: ${e.error}`,
     );
@@ -119,6 +123,36 @@ export class GoogleMapsTool extends BaseTool {
       pushedCount,
       scanErrors,
     );
+  }
+
+  /**
+   * Sync categories for ALL known entries using scan search types.
+   * If an ID was found via 'lodging' search, it's a hotel — update known_places accordingly.
+   * Processes categories in priority order: restaurant < cafe < bar < lodging.
+   */
+  private async syncCategories(scanResult: GridScanResult, city: CityConfig): Promise<void> {
+    const CATEGORY_PRIORITY: [string, CategoryGuess][] = [
+      ['restaurant', 'restaurants'],
+      ['cafe', 'cafes'],
+      ['bar', 'bars'],
+      ['lodging', 'hotels'],
+    ];
+
+    let totalUpdated = 0;
+    for (const [searchType, internalCategory] of CATEGORY_PRIORITY) {
+      const ids = scanResult.idSetsByCategory[searchType];
+      if (!ids || ids.length === 0) continue;
+
+      const updated = await updateCategoryBulk('google_maps', ids, internalCategory, city.id);
+      if (updated > 0) {
+        totalUpdated += updated;
+        this.log.info(`Category sync: ${updated} entries → '${internalCategory}'`);
+      }
+    }
+
+    if (totalUpdated > 0) {
+      this.log.info(`Category sync complete: ${totalUpdated} entries updated`);
+    }
   }
 
   private buildReport(
@@ -167,6 +201,9 @@ function parseArgs(): GoogleMapsToolOptions {
 
 async function main() {
   const options = parseArgs();
+
+  const { loadCities } = await import('../shared/city-config.js');
+  await loadCities();
 
   const city = getCityBySlug(options.city);
   if (!city) {

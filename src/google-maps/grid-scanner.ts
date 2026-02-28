@@ -159,6 +159,9 @@ export async function scanCity(city: CityConfig): Promise<GridScanResult> {
     idsByCategory: Object.fromEntries(
       Array.from(allIds.entries()).map(([k, v]) => [k, v.size]),
     ),
+    idSetsByCategory: Object.fromEntries(
+      Array.from(allIds.entries()).map(([k, v]) => [k, Array.from(v)]),
+    ),
     idsByCell: Object.fromEntries(idsByCell),
     allUniqueIds: Array.from(uniqueIds),
     durationMs: Date.now() - startTime,

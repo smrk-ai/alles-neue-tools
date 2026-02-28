@@ -121,6 +121,47 @@ export async function markPushed(
 }
 
 /**
+ * Bulk-update category for existing known_places entries.
+ * Only sets category — does not touch name, last_seen, or other fields.
+ */
+export async function updateCategoryBulk(
+  source: string,
+  sourceIds: string[],
+  category: string,
+  cityId: string,
+): Promise<number> {
+  if (sourceIds.length === 0) return 0;
+
+  const db = getSupabaseClient();
+  let updated = 0;
+
+  for (let i = 0; i < sourceIds.length; i += BATCH_SIZE) {
+    const batch = sourceIds.slice(i, i + BATCH_SIZE);
+
+    const { count, error } = await db
+      .from('known_places')
+      .update({ category }, { count: 'exact' })
+      .eq('source', source)
+      .eq('city_id', cityId)
+      .in('source_id', batch)
+      .neq('category', category);
+
+    if (error) {
+      log.error(`updateCategoryBulk failed`, { error: error.message, batch: i });
+      throw error;
+    }
+
+    updated += count ?? 0;
+  }
+
+  if (updated > 0) {
+    log.info(`Updated category to '${category}' for ${updated} entries`);
+  }
+
+  return updated;
+}
+
+/**
  * Get statistics for a city (server-side aggregation via RPC).
  */
 export async function getStats(city: string, category?: string): Promise<DeltaStats> {
