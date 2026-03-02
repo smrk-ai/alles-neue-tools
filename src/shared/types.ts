@@ -113,3 +113,16 @@ export interface DeltaStats {
   total: number;
   bySource: Record<string, number>;
 }
+
+// --- Cross-Source Matching (P3) ---
+
+export interface CrossMatchResult {
+  entry: DeltaMarkEntry;
+  matchedWith: {
+    id: string;
+    canonicalId: string;
+    name: string;
+    source: string;
+    score: number;
+  };
+}

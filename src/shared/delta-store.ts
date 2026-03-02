@@ -1,6 +1,8 @@
 import { getSupabaseClient } from './supabase-client.js';
 import { createLogger } from './logger.js';
-import type { DeltaEntry, DeltaMarkEntry, DeltaStats } from './types.js';
+import { normalizeName, findBestMatch, shouldReplaceCanonical } from './name-matcher.js';
+import type { MatchCandidate } from './name-matcher.js';
+import type { DeltaEntry, DeltaMarkEntry, DeltaStats, CrossMatchResult } from './types.js';
 
 const log = createLogger('delta-store');
 
@@ -70,6 +72,7 @@ export async function markKnown(entries: DeltaMarkEntry[]): Promise<void> {
         city_id: e.cityId,
         h3_cell: e.h3Cell || null,
         name: e.name || null,
+        name_normalized: e.name ? normalizeName(e.name) || null : null,
         last_seen: new Date().toISOString(),
       };
       if (e.city) row.city = e.city;
@@ -159,6 +162,177 @@ export async function updateCategoryBulk(
   }
 
   return updated;
+}
+
+// --- Cross-Source Matching (P3) ---
+
+/**
+ * Load cross-source match candidates from known_places.
+ * Returns entries from OTHER sources in the same city+category.
+ */
+async function getCandidates(
+  cityId: string,
+  category: string | undefined,
+  excludeSource: string,
+): Promise<MatchCandidate[]> {
+  const db = getSupabaseClient();
+
+  let query = db
+    .from('known_places')
+    .select('id, source, name, name_normalized, canonical_id')
+    .eq('city_id', cityId)
+    .neq('source', excludeSource)
+    .not('name_normalized', 'is', null);
+
+  if (category) query = query.eq('category', category);
+
+  const { data, error } = await query;
+
+  if (error) {
+    log.error(`getCandidates failed`, { error: error.message, cityId, category });
+    throw error;
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    source: row.source,
+    name: row.name ?? '',
+    nameNormalized: row.name_normalized,
+    canonicalId: row.canonical_id,
+  }));
+}
+
+/**
+ * Find truly new entries by combining intra-source delta + cross-source name matching.
+ * Returns entries split into "truly new" (push to pipeline) and "cross-matched" (link only).
+ */
+export async function findNewWithCrossCheck(
+  entries: DeltaMarkEntry[],
+): Promise<{ trulyNew: DeltaMarkEntry[]; crossMatched: CrossMatchResult[] }> {
+  // Step 1: Intra-source dedup (existing logic)
+  const newIntraSource = await findNew(entries);
+
+  // Map back to DeltaMarkEntry (findNew returns DeltaEntry, we need the full info)
+  const newSourceIds = new Set(newIntraSource.map((e) => `${e.source}::${e.sourceId}`));
+  const newEntries = entries.filter((e) => newSourceIds.has(`${e.source}::${e.sourceId}`));
+
+  // Step 2: Cross-source name matching for entries that have a name
+  const withName = newEntries.filter((e) => e.name);
+  const withoutName = newEntries.filter((e) => !e.name);
+
+  if (withName.length === 0) {
+    return { trulyNew: newEntries, crossMatched: [] };
+  }
+
+  // Load candidates once per city+category+source combination
+  const candidateCache = new Map<string, MatchCandidate[]>();
+  const crossMatched: CrossMatchResult[] = [];
+  const trulyNew: DeltaMarkEntry[] = [...withoutName];
+
+  for (const entry of withName) {
+    const cacheKey = `${entry.cityId}::${entry.category ?? ''}::${entry.source}`;
+
+    if (!candidateCache.has(cacheKey)) {
+      const candidates = await getCandidates(entry.cityId, entry.category, entry.source);
+      candidateCache.set(cacheKey, candidates);
+    }
+
+    const candidates = candidateCache.get(cacheKey)!;
+    const match = findBestMatch(entry.name!, candidates);
+
+    if (match) {
+      crossMatched.push({
+        entry,
+        matchedWith: {
+          id: match.candidateId,
+          canonicalId: match.canonicalId,
+          name: match.candidateName,
+          source: match.candidateSource,
+          score: match.score,
+        },
+      });
+    } else {
+      trulyNew.push(entry);
+    }
+  }
+
+  if (crossMatched.length > 0) {
+    log.info(`Cross-source: ${crossMatched.length} matches found, ${trulyNew.length} truly new`);
+    for (const m of crossMatched) {
+      log.info(
+        `  ↳ ${m.entry.source} "${m.entry.name}" = ${m.matchedWith.source} "${m.matchedWith.name}" (score: ${m.matchedWith.score.toFixed(3)})`,
+      );
+    }
+  }
+
+  return { trulyNew, crossMatched };
+}
+
+/**
+ * Mark cross-matched entries as known with canonical_id linkage.
+ * Does NOT set pushed_to_pipeline (these are duplicates, not new leads).
+ */
+export async function markCrossMatched(
+  results: CrossMatchResult[],
+): Promise<void> {
+  if (results.length === 0) return;
+
+  const db = getSupabaseClient();
+
+  for (const { entry, matchedWith } of results) {
+    // Determine canonical direction: does the new entry have higher source priority?
+    let canonicalId = matchedWith.canonicalId;
+
+    if (shouldReplaceCanonical(entry.source, matchedWith.source)) {
+      // New source is more authoritative — we'll handle canonical swap after markKnown
+      // For now, mark without canonical_id; the entry itself will become canonical
+      canonicalId = ''; // placeholder — will be set after insert
+    }
+
+    const row: Record<string, unknown> = {
+      source: entry.source,
+      source_id: entry.sourceId,
+      city_id: entry.cityId,
+      h3_cell: entry.h3Cell || null,
+      name: entry.name || null,
+      name_normalized: entry.name ? normalizeName(entry.name) || null : null,
+      last_seen: new Date().toISOString(),
+      pushed_to_pipeline: false,
+    };
+    if (entry.city) row.city = entry.city;
+    if (entry.category) row.category = entry.category;
+
+    if (canonicalId && canonicalId !== '') {
+      row.canonical_id = canonicalId;
+    }
+
+    const { data, error } = await db
+      .from('known_places')
+      .upsert(row, { onConflict: 'city_id,source,source_id' })
+      .select('id')
+      .single();
+
+    if (error) {
+      log.error(`markCrossMatched upsert failed`, { error: error.message, entry: entry.sourceId });
+      continue;
+    }
+
+    // If new source has higher priority: swap canonical direction
+    if (shouldReplaceCanonical(entry.source, matchedWith.source) && data?.id) {
+      const { error: swapError } = await db
+        .from('known_places')
+        .update({ canonical_id: data.id })
+        .eq('id', matchedWith.id);
+
+      if (swapError) {
+        log.error(`canonical swap failed`, { error: swapError.message });
+      } else {
+        log.info(`  ↳ Canonical swap: ${entry.source} is now canonical for ${matchedWith.source}`);
+      }
+    }
+  }
+
+  log.info(`Marked ${results.length} cross-source matches`);
 }
 
 /**

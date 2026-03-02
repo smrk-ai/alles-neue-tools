@@ -1,8 +1,8 @@
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
-import { updateCategoryBulk } from '../shared/delta-store.js';
-import type { CategoryGuess, CityConfig, ToolRunReport } from '../shared/types.js';
+import { updateCategoryBulk, findNewWithCrossCheck, markCrossMatched } from '../shared/delta-store.js';
+import type { CategoryGuess, CityConfig, ToolRunReport, DeltaMarkEntry } from '../shared/types.js';
 import { scanCity } from './grid-scanner.js';
 import { detectNew, markAsProcessed } from './delta-detector.js';
 import { getBasicDetailsBatch } from './places-client.js';
@@ -74,9 +74,41 @@ export class GoogleMapsTool extends BaseTool {
       if (cat) categoryById.set(d.id, cat);
     }
 
-    // Step 5: Filter closed, transform to leads
-    const leads = details
+    // Step 5: Cross-source name matching
+    const crossCheckEntries: DeltaMarkEntry[] = details
       .filter((d) => d.businessStatus !== 'CLOSED_PERMANENTLY')
+      .map((d) => ({
+        source: 'google_maps' as const,
+        sourceId: d.id,
+        city: city.name,
+        cityId: city.id,
+        h3Cell: findCellForPlace(d.id, scanResult.idsByCell),
+        name: d.displayName?.text,
+        category: categoryById.get(d.id),
+      }));
+
+    let trulyNewIds: Set<string>;
+    let crossMatchCount = 0;
+
+    try {
+      const { trulyNew, crossMatched } = await findNewWithCrossCheck(crossCheckEntries);
+      trulyNewIds = new Set(trulyNew.map((e) => e.sourceId));
+      crossMatchCount = crossMatched.length;
+
+      if (crossMatched.length > 0 && !this.dryRun) {
+        await markCrossMatched(crossMatched);
+      }
+      if (crossMatched.length > 0) {
+        this.log.info(`Cross-source dedup: ${crossMatched.length} matches, ${trulyNew.length} truly new`);
+      }
+    } catch (err) {
+      this.log.warn(`Cross-source check failed, proceeding without: ${err instanceof Error ? err.message : String(err)}`);
+      trulyNewIds = new Set(deltaResult.newIds);
+    }
+
+    // Step 6: Filter closed, transform to leads (only truly new)
+    const leads = details
+      .filter((d) => d.businessStatus !== 'CLOSED_PERMANENTLY' && trulyNewIds.has(d.id))
       .map((d) =>
         transformToLead(d, {
           city: city.name,
@@ -87,7 +119,7 @@ export class GoogleMapsTool extends BaseTool {
         }),
       );
 
-    // Step 6: Push to pipeline (unless baseline-only)
+    // Step 7: Push to pipeline (unless baseline-only)
     let pushedCount = 0;
     const failedPlaceIds = new Set<string>();
     if (!this.baselineOnly) {
@@ -105,15 +137,15 @@ export class GoogleMapsTool extends BaseTool {
       );
     }
 
-    // Step 7: Mark new IDs as known (exclude failed pushes so they retry next run)
+    // Step 8: Mark new IDs as known (exclude failed pushes so they retry next run)
     const idsToMark = failedPlaceIds.size > 0
-      ? deltaResult.newIds.filter((id) => !failedPlaceIds.has(id))
-      : deltaResult.newIds;
+      ? [...trulyNewIds].filter((id) => !failedPlaceIds.has(id))
+      : [...trulyNewIds];
     if (idsToMark.length > 0) {
       await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById);
     }
 
-    // Step 8: Build report
+    // Step 9: Build report
     const scanErrors = scanResult.errors.map(
       (e) => `${e.cellId.substring(0, 8)}/${e.category}: ${e.error}`,
     );

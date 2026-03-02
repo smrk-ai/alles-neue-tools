@@ -1,8 +1,8 @@
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug, getCityIdBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
-import { markKnown } from '../shared/delta-store.js';
-import type { CityConfig, ToolRunReport, DeltaMarkEntry } from '../shared/types.js';
+import { markKnown, findNewWithCrossCheck, markCrossMatched } from '../shared/delta-store.js';
+import type { CityConfig, ToolRunReport, DeltaMarkEntry, CrossMatchResult } from '../shared/types.js';
 import { getSourcesForCity, getSourceById } from './config.js';
 import { fetchSitemapEntries } from './sitemap-fetcher.js';
 import { findNewEntries, extractSourceId } from './delta-engine.js';
@@ -46,6 +46,7 @@ export class SitemapMinerTool extends BaseTool {
     let totalFound = 0;
     let totalNew = 0;
     let totalPushed = 0;
+    let totalCrossMatched = 0;
 
     // Step 2: Process each source config
     for (const source of sources) {
@@ -69,7 +70,7 @@ export class SitemapMinerTool extends BaseTool {
         continue;
       }
 
-      // Step 2b: Delta detection
+      // Step 2b: Intra-source delta detection
       let deltaResult;
       try {
         deltaResult = await findNewEntries(entries, source.platform);
@@ -85,15 +86,46 @@ export class SitemapMinerTool extends BaseTool {
         continue;
       }
 
-      totalNew += deltaResult.newEntries.length;
-
-      // Step 2c: Enrich new URLs
+      // Step 2c: Enrich new URLs (need names for cross-source matching)
       const enriched = enrichEntries(deltaResult.newEntries, source);
 
-      // Step 2d: Build leads
-      const leads = buildLeads(enriched, source.id);
+      // Step 2d: Cross-source name matching
+      const cityId = getCityIdBySlug(source.citySlug)!;
+      const markEntries: DeltaMarkEntry[] = deltaResult.newEntries.map((e) => ({
+        source: source.platform,
+        sourceId: extractSourceId(e.loc),
+        city: source.city,
+        cityId,
+        name: enriched.find((en) => en.url === e.loc)?.name || undefined,
+        category: source.category,
+      }));
 
-      // Step 2e: Push to pipeline FIRST (prevents data loss if push fails)
+      let trulyNewEntries: DeltaMarkEntry[];
+      let crossMatches: CrossMatchResult[] = [];
+
+      try {
+        const crossResult = await findNewWithCrossCheck(markEntries);
+        trulyNewEntries = crossResult.trulyNew;
+        crossMatches = crossResult.crossMatched;
+        totalCrossMatched += crossMatches.length;
+      } catch (err) {
+        const msg = `Cross-source check error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
+        this.log.warn(msg);
+        // Fallback: treat all as truly new (graceful degradation)
+        trulyNewEntries = markEntries;
+      }
+
+      totalNew += trulyNewEntries.length;
+
+      // Step 2e: Build leads only for truly new entries
+      const trulyNewSourceIds = new Set(trulyNewEntries.map((e) => e.sourceId));
+      const trulyNewEnriched = enriched.filter((e) => {
+        const sid = extractSourceId(e.url);
+        return trulyNewSourceIds.has(sid);
+      });
+      const leads = buildLeads(trulyNewEnriched, source.id);
+
+      // Step 2f: Push to pipeline (only truly new, not cross-matched)
       let pushResults: Awaited<ReturnType<typeof pushLeads>> = [];
       if (!this.dryRun && leads.length > 0) {
         pushResults = await pushLeads(leads);
@@ -110,31 +142,42 @@ export class SitemapMinerTool extends BaseTool {
         }
       }
 
-      // Step 2f: Mark only successfully pushed entries as known (failed ones retry next run)
+      if (this.dryRun && crossMatches.length > 0) {
+        this.log.info(`[DRY RUN] ${crossMatches.length} cross-source matches (would skip pipeline push)`);
+      }
+
+      // Step 2g: Mark entries as known
       if (!this.dryRun) {
+        // Mark truly new entries that were successfully pushed
         const entriesToMark = pushResults.length > 0
-          ? deltaResult.newEntries.filter((_, i) => pushResults[i]?.success)
-          : deltaResult.newEntries;
+          ? trulyNewEntries.filter((_, i) => pushResults[i]?.success)
+          : trulyNewEntries;
 
         if (entriesToMark.length > 0) {
-          const markEntries: DeltaMarkEntry[] = entriesToMark.map((e) => ({
-            source: source.platform,
-            sourceId: extractSourceId(e.loc),
-            city: source.city,
-            cityId: getCityIdBySlug(source.citySlug)!,
-            name: enriched.find((en) => en.url === e.loc)?.name || undefined,
-            category: source.category,
-          }));
-
           try {
-            await markKnown(markEntries);
+            await markKnown(entriesToMark);
           } catch (err) {
             const msg = `markKnown error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
             this.log.error(msg);
             errors.push(msg);
           }
         }
+
+        // Mark cross-matched entries with canonical_id linkage
+        if (crossMatches.length > 0) {
+          try {
+            await markCrossMatched(crossMatches);
+          } catch (err) {
+            const msg = `markCrossMatched error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
+            this.log.error(msg);
+            errors.push(msg);
+          }
+        }
       }
+    }
+
+    if (totalCrossMatched > 0) {
+      this.log.info(`Cross-source dedup total: ${totalCrossMatched} duplicates prevented`);
     }
 
     return this.buildReport(totalFound, totalNew, totalPushed, errors);
