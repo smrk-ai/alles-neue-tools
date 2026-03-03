@@ -91,12 +91,13 @@ export class SitemapMinerTool extends BaseTool {
 
       // Step 2d: Cross-source name matching
       const cityId = getCityIdBySlug(source.citySlug)!;
+      const enrichedByUrl = new Map(enriched.map((en) => [en.url, en]));
       const markEntries: DeltaMarkEntry[] = deltaResult.newEntries.map((e) => ({
         source: source.platform,
         sourceId: extractSourceId(e.loc),
         city: source.city,
         cityId,
-        name: enriched.find((en) => en.url === e.loc)?.name || undefined,
+        name: enrichedByUrl.get(e.loc)?.name || undefined,
         category: source.category,
       }));
 

@@ -14,26 +14,36 @@ const BATCH_SIZE = 200;
 const PAGE_SIZE = 1000; // Supabase default limit
 const dryRun = process.argv.includes('--dry-run');
 
-async function backfillNormalized() {
-  const db = getSupabaseClient();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyRecord = Record<string, any>;
 
-  // Load all entries with name but no name_normalized (paginated)
+async function fetchPaginated(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const entries: any[] = [];
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: AnyRecord[] | null; error: any }>,
+): Promise<AnyRecord[]> {
+  const all: AnyRecord[] = [];
   let offset = 0;
   while (true) {
-    const { data, error } = await db
-      .from('known_places')
-      .select('id, name')
-      .not('name', 'is', null)
-      .is('name_normalized', null)
-      .range(offset, offset + PAGE_SIZE - 1);
+    const { data, error } = await buildQuery(offset, offset + PAGE_SIZE - 1);
     if (error) { console.error('Query failed:', error.message); process.exit(1); }
     if (!data || data.length === 0) break;
-    entries.push(...data);
+    all.push(...data);
     if (data.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
   }
+  return all;
+}
+
+async function backfillNormalized() {
+  const db = getSupabaseClient();
+
+  const entries = await fetchPaginated((from, to) =>
+    db.from('known_places')
+      .select('id, name')
+      .not('name', 'is', null)
+      .is('name_normalized', null)
+      .range(from, to),
+  );
 
   if (entries.length === 0) {
     console.log('No entries to backfill.');
@@ -78,24 +88,14 @@ async function backfillNormalized() {
 async function crossMatchExisting() {
   const db = getSupabaseClient();
 
-  // Load all entries with name_normalized (paginated)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const entries: any[] = [];
-  let offset = 0;
-  while (true) {
-    const { data, error } = await db
-      .from('known_places')
+  const entries = await fetchPaginated((from, to) =>
+    db.from('known_places')
       .select('id, source, name, name_normalized, city_id, category, canonical_id')
       .not('name_normalized', 'is', null)
       .is('canonical_id', null)
       .order('source', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error) { console.error('Query failed:', error.message); process.exit(1); }
-    if (!data || data.length === 0) break;
-    entries.push(...data);
-    if (data.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
+      .range(from, to),
+  );
 
   if (entries.length === 0) {
     console.log('No unmatched entries to cross-check.');

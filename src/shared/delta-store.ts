@@ -63,22 +63,9 @@ export async function markKnown(entries: DeltaMarkEntry[]): Promise<void> {
 
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
-    const rows = batch.map((e) => {
-      // Omit city field entirely if undefined/null so the DB default ('Hoi An') kicks in.
-      // Passing null explicitly violates the NOT NULL constraint.
-      const row: Record<string, unknown> = {
-        source: e.source,
-        source_id: e.sourceId,
-        city_id: e.cityId,
-        h3_cell: e.h3Cell || null,
-        name: e.name || null,
-        name_normalized: e.name ? normalizeName(e.name) || null : null,
-        last_seen: new Date().toISOString(),
-      };
-      if (e.city) row.city = e.city;
-      if (e.category) row.category = e.category;
-      return row;
-    });
+    // Omit city field entirely if undefined/null so the DB default ('Hoi An') kicks in.
+    // Passing null explicitly violates the NOT NULL constraint.
+    const rows = batch.map(buildKnownPlaceRow);
 
     const { error } = await db
       .from('known_places')
@@ -166,6 +153,21 @@ export async function updateCategoryBulk(
 
 // --- Cross-Source Matching (P3) ---
 
+function buildKnownPlaceRow(e: DeltaMarkEntry): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    source: e.source,
+    source_id: e.sourceId,
+    city_id: e.cityId,
+    h3_cell: e.h3Cell || null,
+    name: e.name || null,
+    name_normalized: e.name ? normalizeName(e.name) || null : null,
+    last_seen: new Date().toISOString(),
+  };
+  if (e.city) row.city = e.city;
+  if (e.category) row.category = e.category;
+  return row;
+}
+
 /**
  * Load cross-source match candidates from known_places.
  * Returns entries from OTHER sources in the same city+category.
@@ -224,19 +226,25 @@ export async function findNewWithCrossCheck(
     return { trulyNew: newEntries, crossMatched: [] };
   }
 
-  // Load candidates once per city+category+source combination
+  // Pre-fetch candidates for all unique (cityId, category, source) combos in parallel
+  const uniqueKeys = new Map<string, { cityId: string; category: string | undefined; source: string }>();
+  for (const entry of withName) {
+    const key = `${entry.cityId}::${entry.category ?? ''}::${entry.source}`;
+    if (!uniqueKeys.has(key)) uniqueKeys.set(key, { cityId: entry.cityId, category: entry.category, source: entry.source });
+  }
   const candidateCache = new Map<string, MatchCandidate[]>();
+  await Promise.all(
+    [...uniqueKeys.entries()].map(async ([key, { cityId, category, source }]) => {
+      const candidates = await getCandidates(cityId, category, source);
+      candidateCache.set(key, candidates);
+    }),
+  );
+
   const crossMatched: CrossMatchResult[] = [];
   const trulyNew: DeltaMarkEntry[] = [...withoutName];
 
   for (const entry of withName) {
     const cacheKey = `${entry.cityId}::${entry.category ?? ''}::${entry.source}`;
-
-    if (!candidateCache.has(cacheKey)) {
-      const candidates = await getCandidates(entry.cityId, entry.category, entry.source);
-      candidateCache.set(cacheKey, candidates);
-    }
-
     const candidates = candidateCache.get(cacheKey)!;
     const match = findBestMatch(entry.name!, candidates);
 
@@ -279,31 +287,17 @@ export async function markCrossMatched(
 
   const db = getSupabaseClient();
 
-  for (const { entry, matchedWith } of results) {
+  await Promise.all(results.map(async ({ entry, matchedWith }) => {
     // Determine canonical direction: does the new entry have higher source priority?
-    let canonicalId = matchedWith.canonicalId;
-
-    if (shouldReplaceCanonical(entry.source, matchedWith.source)) {
-      // New source is more authoritative — we'll handle canonical swap after markKnown
-      // For now, mark without canonical_id; the entry itself will become canonical
-      canonicalId = ''; // placeholder — will be set after insert
-    }
+    const newEntryIsCanonical = shouldReplaceCanonical(entry.source, matchedWith.source);
 
     const row: Record<string, unknown> = {
-      source: entry.source,
-      source_id: entry.sourceId,
-      city_id: entry.cityId,
-      h3_cell: entry.h3Cell || null,
-      name: entry.name || null,
-      name_normalized: entry.name ? normalizeName(entry.name) || null : null,
-      last_seen: new Date().toISOString(),
+      ...buildKnownPlaceRow(entry),
       pushed_to_pipeline: false,
     };
-    if (entry.city) row.city = entry.city;
-    if (entry.category) row.category = entry.category;
-
-    if (canonicalId && canonicalId !== '') {
-      row.canonical_id = canonicalId;
+    // If existing entry stays canonical, link new entry to it
+    if (!newEntryIsCanonical) {
+      row.canonical_id = matchedWith.canonicalId;
     }
 
     const { data, error } = await db
@@ -314,11 +308,11 @@ export async function markCrossMatched(
 
     if (error) {
       log.error(`markCrossMatched upsert failed`, { error: error.message, entry: entry.sourceId });
-      continue;
+      return;
     }
 
     // If new source has higher priority: swap canonical direction
-    if (shouldReplaceCanonical(entry.source, matchedWith.source) && data?.id) {
+    if (newEntryIsCanonical && data.id) {
       const { error: swapError } = await db
         .from('known_places')
         .update({ canonical_id: data.id })
@@ -330,7 +324,7 @@ export async function markCrossMatched(
         log.info(`  ↳ Canonical swap: ${entry.source} is now canonical for ${matchedWith.source}`);
       }
     }
-  }
+  }));
 
   log.info(`Marked ${results.length} cross-source matches`);
 }

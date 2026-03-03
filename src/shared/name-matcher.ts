@@ -103,6 +103,12 @@ export function normalizeName(name: string): string {
 
 export const MATCH_THRESHOLD = 0.92;
 
+function scoreNormalized(normA: string, normB: string): number {
+  const jw = jaroWinkler(normA, normB);
+  const containment = normA.includes(normB) || normB.includes(normA) ? 0.05 : 0;
+  return Math.min(jw + containment, 1.0);
+}
+
 /**
  * Compute similarity score between two place names.
  * Returns 0..1 (1 = identical after normalization).
@@ -114,12 +120,7 @@ export function matchScore(nameA: string, nameB: string): number {
   if (!normA || !normB) return 0;
   if (normA === normB) return 1.0;
 
-  const jw = jaroWinkler(normA, normB);
-
-  // Containment bonus: one name is substring of the other
-  const containment = normA.includes(normB) || normB.includes(normA) ? 0.05 : 0;
-
-  return Math.min(jw + containment, 1.0);
+  return scoreNormalized(normA, normB);
 }
 
 // --- Source Priority ---
@@ -184,10 +185,7 @@ export function findBestMatch(
       break;
     }
 
-    const score = jaroWinkler(normalized, cNorm);
-    // Add containment bonus
-    const containment = normalized.includes(cNorm) || cNorm.includes(normalized) ? 0.05 : 0;
-    const total = Math.min(score + containment, 1.0);
+    const total = scoreNormalized(normalized, cNorm);
 
     if (total > bestScore) {
       bestScore = total;
