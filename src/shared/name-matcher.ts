@@ -2,6 +2,8 @@
 // Cross-Source Name Matching (P3)
 // ===========================================
 
+import type { LeadSource } from './types.js';
+
 // --- Jaro-Winkler Implementation ---
 
 function jaro(s1: string, s2: string): number {
@@ -126,7 +128,7 @@ export function matchScore(nameA: string, nameB: string): number {
 // --- Source Priority ---
 
 // Higher number = more authoritative (preferred as canonical)
-export const SOURCE_PRIORITY: Record<string, number> = {
+export const SOURCE_PRIORITY: Partial<Record<LeadSource, number>> = {
   google_maps: 100,
   osm: 80,
   facebook: 60,
@@ -212,5 +214,5 @@ export function findBestMatch(
  * Returns true if the new source should become canonical instead.
  */
 export function shouldReplaceCanonical(newSource: string, existingSource: string): boolean {
-  return (SOURCE_PRIORITY[newSource] ?? 0) > (SOURCE_PRIORITY[existingSource] ?? 0);
+  return (SOURCE_PRIORITY[newSource as LeadSource] ?? 0) > (SOURCE_PRIORITY[existingSource as LeadSource] ?? 0);
 }

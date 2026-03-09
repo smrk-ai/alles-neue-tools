@@ -73,10 +73,7 @@ export function getAllScanCells(city: CityConfig): string[] {
     return mainCells;
   }
 
-  let allHotspotCells: string[] = [];
-  for (const hotspot of city.hotspots) {
-    allHotspotCells = [...allHotspotCells, ...getHotspotCells(hotspot)];
-  }
+  const allHotspotCells = city.hotspots.flatMap(getHotspotCells);
 
   return mergeCells(mainCells, allHotspotCells, city.resolution);
 }

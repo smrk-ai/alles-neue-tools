@@ -14,11 +14,10 @@ import {
   getQuotaStatus,
   markUsed,
 } from './hashtag-rotation.js';
+import { sleep } from '../shared/utils.js';
 import type { InstagramPost, InstagramToolOptions, PostAnalysisResult } from './types.js';
 
 const TOOL_SLUG = 'instagram-scout';
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // --- Tool Class ---
 
@@ -43,12 +42,9 @@ export class InstagramScoutTool extends BaseTool {
     // Show quota status if requested
     if (this.showQuota) {
       const quota = getQuotaStatus(rotationState);
-      console.log('\n--- Instagram Hashtag Quota ---');
-      console.log(`Week:      ${quota.weekId}`);
-      console.log(`Used:      ${quota.used}/30`);
-      console.log(`Remaining: ${quota.remaining}`);
+      this.log.info(`Hashtag Quota — Week: ${quota.weekId}, Used: ${quota.used}/30, Remaining: ${quota.remaining}`);
       if (quota.usedTags.length > 0) {
-        console.log(`Tags used: ${quota.usedTags.join(', ')}`);
+        this.log.info(`Tags used: ${quota.usedTags.join(', ')}`);
       }
       return this.buildReport(0, 0, 0, []);
     }
@@ -193,25 +189,6 @@ export class InstagramScoutTool extends BaseTool {
     );
   }
 
-  private buildReport(
-    found: number,
-    newCount: number,
-    pushed: number,
-    errors: string[],
-  ): ToolRunReport {
-    return {
-      toolSlug: TOOL_SLUG,
-      city: this.city,
-      startedAt: new Date(),
-      finishedAt: new Date(),
-      durationMs: 0,
-      leadsFound: found,
-      leadsNew: newCount,
-      leadsPushed: pushed,
-      errors,
-      status: errors.length === 0 ? 'success' : 'partial',
-    };
-  }
 }
 
 /** Factory for orchestrator usage */

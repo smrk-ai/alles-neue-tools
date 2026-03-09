@@ -15,88 +15,39 @@ export interface TokenStatus {
   warning: string | null;
 }
 
+async function checkToken(name: string, token: string, warnOnExpiry = true): Promise<TokenStatus> {
+  try {
+    const info = await inspectToken(token);
+    return {
+      name,
+      isValid: info.isValid,
+      expiresAt: info.expiresAt,
+      daysRemaining: info.daysRemaining,
+      scopes: info.scopes,
+      warning: warnOnExpiry && info.daysRemaining !== null && info.daysRemaining < 7
+        ? `Expires in ${info.daysRemaining} days! Run --refresh soon.`
+        : null,
+    };
+  } catch (error) {
+    return {
+      name,
+      isValid: false,
+      expiresAt: null,
+      daysRemaining: null,
+      scopes: [],
+      warning: `Check failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 export async function checkAllTokens(): Promise<TokenStatus[]> {
-  const results: TokenStatus[] = [];
+  const checks: Promise<TokenStatus>[] = [];
 
-  // User Token
-  if (config.meta.userToken) {
-    try {
-      const info = await inspectToken(config.meta.userToken);
-      results.push({
-        name: 'User Token',
-        isValid: info.isValid,
-        expiresAt: info.expiresAt,
-        daysRemaining: info.daysRemaining,
-        scopes: info.scopes,
-        warning:
-          info.daysRemaining !== null && info.daysRemaining < 7
-            ? `Expires in ${info.daysRemaining} days! Run --refresh soon.`
-            : null,
-      });
-    } catch (error) {
-      results.push({
-        name: 'User Token',
-        isValid: false,
-        expiresAt: null,
-        daysRemaining: null,
-        scopes: [],
-        warning: `Check failed: ${error instanceof Error ? error.message : error}`,
-      });
-    }
-  }
+  if (config.meta.userToken) checks.push(checkToken('User Token', config.meta.userToken));
+  if (config.meta.instagramToken) checks.push(checkToken('Instagram Token', config.meta.instagramToken));
+  if (config.meta.pageToken) checks.push(checkToken('Page Token', config.meta.pageToken, false));
 
-  // Instagram Token
-  if (config.meta.instagramToken) {
-    try {
-      const info = await inspectToken(config.meta.instagramToken);
-      results.push({
-        name: 'Instagram Token',
-        isValid: info.isValid,
-        expiresAt: info.expiresAt,
-        daysRemaining: info.daysRemaining,
-        scopes: info.scopes,
-        warning:
-          info.daysRemaining !== null && info.daysRemaining < 7
-            ? `Expires in ${info.daysRemaining} days! Run --refresh soon.`
-            : null,
-      });
-    } catch (error) {
-      results.push({
-        name: 'Instagram Token',
-        isValid: false,
-        expiresAt: null,
-        daysRemaining: null,
-        scopes: [],
-        warning: `Check failed: ${error instanceof Error ? error.message : error}`,
-      });
-    }
-  }
-
-  // Page Token (permanent)
-  if (config.meta.pageToken) {
-    try {
-      const info = await inspectToken(config.meta.pageToken);
-      results.push({
-        name: 'Page Token',
-        isValid: info.isValid,
-        expiresAt: info.expiresAt,
-        daysRemaining: info.daysRemaining,
-        scopes: info.scopes,
-        warning: null,
-      });
-    } catch (error) {
-      results.push({
-        name: 'Page Token',
-        isValid: false,
-        expiresAt: null,
-        daysRemaining: null,
-        scopes: [],
-        warning: `Check failed: ${error instanceof Error ? error.message : error}`,
-      });
-    }
-  }
-
-  return results;
+  return Promise.all(checks);
 }
 
 // --- Token Refresh ---

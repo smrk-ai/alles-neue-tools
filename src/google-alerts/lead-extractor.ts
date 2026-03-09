@@ -1,5 +1,6 @@
-import type { CategoryGuess, PipelineLeadInput } from '../shared/types.js';
+import type { PipelineLeadInput } from '../shared/types.js';
 import { getCityIdBySlug } from '../shared/city-config.js';
+import { guessCategory } from '../shared/utils.js';
 import type { ScoredItem } from './types.js';
 
 // --- Business Name Extraction ---
@@ -33,23 +34,6 @@ export function extractBusinessName(title: string): string | null {
     if (!isGenericPhrase(candidate)) return candidate;
   }
 
-  return null;
-}
-
-// --- Category Guessing ---
-
-const CATEGORY_KEYWORDS: Array<[string[], CategoryGuess]> = [
-  [['restaurant', 'eatery', 'dining', 'bistro', 'nhà hàng', 'quán ăn'], 'restaurants'],
-  [['cafe', 'café', 'coffee', 'cà phê', 'quán cà phê', 'bakery', 'tiệm bánh'], 'cafes'],
-  [['bar', 'pub', 'cocktail', 'nightclub', 'lounge', 'quán bar'], 'bars'],
-  [['hotel', 'resort', 'hostel', 'homestay', 'khách sạn', 'nhà nghỉ', 'guest house', 'villa'], 'hotels'],
-];
-
-export function guessCategory(text: string): CategoryGuess | null {
-  const lower = text.toLowerCase();
-  for (const [keywords, category] of CATEGORY_KEYWORDS) {
-    if (keywords.some((k) => lower.includes(k))) return category;
-  }
   return null;
 }
 

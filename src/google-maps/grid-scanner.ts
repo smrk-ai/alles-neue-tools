@@ -1,6 +1,7 @@
 import { getResolution } from 'h3-js';
 import { getAllScanCells, getCellCenter, getChildCells } from '../shared/h3-grid.js';
 import { createLogger } from '../shared/logger.js';
+import { sleep } from '../shared/utils.js';
 import type { CityConfig } from '../shared/types.js';
 import { searchNearbyIDs, withRetry } from './places-client.js';
 import type { GridScanResult, ScanError } from './types.js';
@@ -23,8 +24,6 @@ function getRadiusForCell(cellId: string): number {
   const res = getResolution(cellId);
   return RADIUS_BY_RESOLUTION[res] ?? DEFAULT_RADIUS;
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Subdivision tracking (reset per scan)
 let subdivisionCount = 0;

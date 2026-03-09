@@ -5,7 +5,9 @@ import type { CityConfig, ToolRunOptions, ToolRunReport } from './types.js';
 
 // --- Tool Runs API Client ---
 
-async function createToolRun(toolSlug: string): Promise<string | null> {
+const toolRunLog = createLogger('tool-runs');
+
+export async function createToolRun(toolSlug: string): Promise<string | null> {
   try {
     const res = await fetch(config.toolRuns.apiUrl, {
       method: 'POST',
@@ -18,19 +20,19 @@ async function createToolRun(toolSlug: string): Promise<string | null> {
 
     if (!res.ok) {
       const body = await res.text();
-      console.error(`Failed to create tool run (${res.status}): ${body}`);
+      toolRunLog.error(`Failed to create tool run (${res.status}): ${body}`);
       return null;
     }
 
     const data = await res.json() as { run_id: string };
     return data.run_id;
   } catch (err) {
-    console.error(`Failed to create tool run:`, err);
+    toolRunLog.error(`Failed to create tool run`, { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }
 
-async function updateToolRun(
+export async function updateToolRun(
   runId: string,
   update: {
     status: string;
@@ -50,7 +52,7 @@ async function updateToolRun(
       body: JSON.stringify({ run_id: runId, ...update }),
     });
   } catch (err) {
-    console.error(`Failed to update tool run:`, err);
+    toolRunLog.error(`Failed to update tool run`, { error: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -77,6 +79,30 @@ export abstract class BaseTool {
   abstract run(city: CityConfig): Promise<ToolRunReport>;
 
   /**
+   * Build a standardized ToolRunReport.
+   * startedAt/finishedAt/durationMs are placeholders — execute() overwrites them.
+   */
+  protected buildReport(
+    found: number,
+    newCount: number,
+    pushed: number,
+    errors: string[],
+  ): ToolRunReport {
+    return {
+      toolSlug: this.toolSlug,
+      city: this.city,
+      startedAt: new Date(),
+      finishedAt: new Date(),
+      durationMs: 0,
+      leadsFound: found,
+      leadsNew: newCount,
+      leadsPushed: pushed,
+      errors,
+      status: errors.length === 0 ? 'success' : 'partial',
+    };
+  }
+
+  /**
    * Execute the tool with lifecycle management.
    * Creates a tool run record, executes, and reports results.
    */
@@ -92,29 +118,30 @@ export abstract class BaseTool {
       this.log.warn(`Could not create tool run record – continuing without tracking`);
     }
 
+    // Guard to prevent race between SIGTERM and timeout
+    let exiting = false;
+    const exitWithReport = (errorMessage: string) => {
+      if (exiting) return;
+      exiting = true;
+      const done = runId
+        ? updateToolRun(runId, { status: 'error', error_message: errorMessage })
+        : Promise.resolve();
+      // Give 3s for the API call, then force exit
+      const deadline = new Promise<void>((r) => setTimeout(r, 3000));
+      Promise.race([done, deadline]).finally(() => process.exit(1));
+    };
+
     // Graceful shutdown on SIGTERM (Railway container stop)
-    const onSigterm = async () => {
+    const onSigterm = () => {
       this.log.warn('SIGTERM received – marking run as error');
-      if (runId) {
-        await updateToolRun(runId, {
-          status: 'error',
-          error_message: 'Process killed (SIGTERM)',
-        });
-      }
-      process.exit(1);
+      exitWithReport('Process killed (SIGTERM)');
     };
     process.on('SIGTERM', onSigterm);
 
     // Hard timeout to prevent zombie runs
-    const timeoutId = setTimeout(async () => {
+    const timeoutId = setTimeout(() => {
       this.log.error(`Execution timeout reached (${MAX_EXECUTION_MS / 1000}s)`);
-      if (runId) {
-        await updateToolRun(runId, {
-          status: 'error',
-          error_message: `Execution timeout (${MAX_EXECUTION_MS / 60000}min)`,
-        });
-      }
-      process.exit(1);
+      exitWithReport(`Execution timeout (${MAX_EXECUTION_MS / 60000}min)`);
     }, MAX_EXECUTION_MS);
     timeoutId.unref();
 

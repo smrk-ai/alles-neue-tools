@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { pushLead } from '../shared/pipeline-client.js';
+import { pushLeads } from '../shared/pipeline-client.js';
 import { createLogger } from '../shared/logger.js';
 import type { PipelineLeadInput, CategoryGuess, LeadSource } from '../shared/types.js';
 
@@ -194,13 +194,16 @@ async function importLeads(options: ImportOptions): Promise<void> {
     }
   }
 
-  // 7. Push to pipeline
+  // 7. Push to pipeline (batch with concurrency)
+  const results = await pushLeads(normalized);
+
   let success = 0;
   let duplicates = 0;
   let errors = 0;
 
-  for (const lead of normalized) {
-    const result = await pushLead(lead);
+  for (let i = 0; i < normalized.length; i++) {
+    const lead = normalized[i];
+    const result = results[i];
     if (result.duplicate) {
       console.log(`  ⏭️  ${lead.name} (duplicate)`);
       duplicates++;

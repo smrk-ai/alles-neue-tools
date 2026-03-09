@@ -13,53 +13,10 @@ import 'dotenv/config';
 import { getSupabaseClient } from '../shared/supabase-client.js';
 import { getCityBySlug, getAllCities, loadCities } from '../shared/city-config.js';
 import { createLogger } from '../shared/logger.js';
-import { config } from '../shared/config.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
-import type { BaseTool } from '../shared/tool-runner.js';
+import { createToolRun, updateToolRun, BaseTool } from '../shared/tool-runner.js';
 
 const log = createLogger('run-all');
-
-// --- Self-Reporting (claims pending record from admin UI or creates new) ---
-
-async function reportRunAllStart(): Promise<string | null> {
-  try {
-    const res = await fetch(config.toolRuns.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.toolRuns.apiKey,
-      },
-      body: JSON.stringify({ tool_slug: 'run-all', status: 'running' }),
-    });
-    if (!res.ok) {
-      log.warn(`Could not create run-all run record (${res.status})`);
-      return null;
-    }
-    const data = (await res.json()) as { run_id: string };
-    return data.run_id;
-  } catch (err) {
-    log.warn('Failed to report run-all start', { error: String(err) });
-    return null;
-  }
-}
-
-async function reportRunAllFinish(
-  runId: string,
-  update: { status: string; leads_found: number; leads_new: number; error_message?: string },
-): Promise<void> {
-  try {
-    await fetch(config.toolRuns.apiUrl, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': config.toolRuns.apiKey,
-      },
-      body: JSON.stringify({ run_id: runId, ...update }),
-    });
-  } catch (err) {
-    log.warn('Failed to report run-all finish', { error: String(err) });
-  }
-}
 
 // --- Tool Registry (same as run-tool.ts) ---
 
@@ -170,7 +127,7 @@ async function main() {
   console.log(`${'='.repeat(50)}\n`);
 
   // Report run-all start (claims pending record from admin UI or creates new)
-  const runAllId = await reportRunAllStart();
+  const runAllId = await createToolRun('run-all');
   if (runAllId) {
     log.info('Run-all tracking started', { runId: runAllId });
   }
@@ -280,7 +237,7 @@ async function main() {
   // Report run-all finish
   if (runAllId) {
     const failedSlugs = failed.map((f) => f.slug).join(', ');
-    await reportRunAllFinish(runAllId, {
+    await updateToolRun(runAllId, {
       status: failed.length > 0 ? 'error' : 'success',
       leads_found: totalFound,
       leads_new: totalNew,

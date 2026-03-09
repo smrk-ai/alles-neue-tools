@@ -1,5 +1,6 @@
 import { config } from '../shared/config.js';
 import { createLogger } from '../shared/logger.js';
+import { sleep } from '../shared/utils.js';
 import type { NearbySearchParams, PlaceBasicDetails } from './types.js';
 import { PlacesApiError } from './types.js';
 
@@ -21,8 +22,6 @@ const BASIC_FIELDS = [
 
 const RETRY_ATTEMPTS = 2;
 const RETRY_DELAY_MS = 2000;
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // --- API Key ---
 

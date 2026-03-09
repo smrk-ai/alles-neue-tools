@@ -286,45 +286,46 @@ export async function markCrossMatched(
   if (results.length === 0) return;
 
   const db = getSupabaseClient();
+  const CONCURRENCY = 10;
 
-  await Promise.all(results.map(async ({ entry, matchedWith }) => {
-    // Determine canonical direction: does the new entry have higher source priority?
-    const newEntryIsCanonical = shouldReplaceCanonical(entry.source, matchedWith.source);
+  for (let i = 0; i < results.length; i += CONCURRENCY) {
+    const chunk = results.slice(i, i + CONCURRENCY);
+    await Promise.all(chunk.map(async ({ entry, matchedWith }) => {
+      const newEntryIsCanonical = shouldReplaceCanonical(entry.source, matchedWith.source);
 
-    const row: Record<string, unknown> = {
-      ...buildKnownPlaceRow(entry),
-      pushed_to_pipeline: false,
-    };
-    // If existing entry stays canonical, link new entry to it
-    if (!newEntryIsCanonical) {
-      row.canonical_id = matchedWith.canonicalId;
-    }
-
-    const { data, error } = await db
-      .from('known_places')
-      .upsert(row, { onConflict: 'city_id,source,source_id' })
-      .select('id')
-      .single();
-
-    if (error) {
-      log.error(`markCrossMatched upsert failed`, { error: error.message, entry: entry.sourceId });
-      return;
-    }
-
-    // If new source has higher priority: swap canonical direction
-    if (newEntryIsCanonical && data.id) {
-      const { error: swapError } = await db
-        .from('known_places')
-        .update({ canonical_id: data.id })
-        .eq('id', matchedWith.id);
-
-      if (swapError) {
-        log.error(`canonical swap failed`, { error: swapError.message });
-      } else {
-        log.info(`  ↳ Canonical swap: ${entry.source} is now canonical for ${matchedWith.source}`);
+      const row: Record<string, unknown> = {
+        ...buildKnownPlaceRow(entry),
+        pushed_to_pipeline: false,
+      };
+      if (!newEntryIsCanonical) {
+        row.canonical_id = matchedWith.canonicalId;
       }
-    }
-  }));
+
+      const { data, error } = await db
+        .from('known_places')
+        .upsert(row, { onConflict: 'city_id,source,source_id' })
+        .select('id')
+        .single();
+
+      if (error) {
+        log.error(`markCrossMatched upsert failed`, { error: error.message, entry: entry.sourceId });
+        return;
+      }
+
+      if (newEntryIsCanonical && data.id) {
+        const { error: swapError } = await db
+          .from('known_places')
+          .update({ canonical_id: data.id })
+          .eq('id', matchedWith.id);
+
+        if (swapError) {
+          log.error(`canonical swap failed`, { error: swapError.message });
+        } else {
+          log.info(`  ↳ Canonical swap: ${entry.source} is now canonical for ${matchedWith.source}`);
+        }
+      }
+    }));
+  }
 
   log.info(`Marked ${results.length} cross-source matches`);
 }

@@ -1,5 +1,5 @@
 import { createLogger } from '../shared/logger.js';
-import type { CategoryGuess } from '../shared/types.js';
+import { guessCategory } from '../shared/utils.js';
 import type { ParsedChangeItem, SnapshotParserType, WatchConfig } from './types.js';
 
 const log = createLogger('snapshot-parser');
@@ -286,7 +286,7 @@ function parseJobListing(text: string, config: WatchConfig): ParsedChangeItem[] 
 
         if (companySlug && !seenCompanies.has(companySlug)) {
           seenCompanies.add(companySlug);
-          const category = guessCategory(line + ' ' + companyName);
+          const category = guessCategory(line + ' ' + companyName) ?? undefined;
 
           items.push({
             externalId: companySlug,
@@ -357,13 +357,4 @@ function parseCommercialListing(text: string, config: WatchConfig): ParsedChange
   return items;
 }
 
-// --- Category Guesser ---
-
-function guessCategory(text: string): CategoryGuess | undefined {
-  const lower = text.toLowerCase();
-  if (/\b(restaurant|nhà hàng|quán ăn|bếp|kitchen|chef)\b/.test(lower)) return 'restaurants';
-  if (/\b(cafe|café|coffee|cà phê|tiệm bánh|bakery)\b/.test(lower)) return 'cafes';
-  if (/\b(bar|pub|cocktail|nightclub|quán bar)\b/.test(lower)) return 'bars';
-  if (/\b(hotel|resort|hostel|homestay|khách sạn|nhà nghỉ|guest\s*house)\b/.test(lower)) return 'hotels';
-  return undefined;
-}
+// guessCategory is now imported from shared/utils.ts

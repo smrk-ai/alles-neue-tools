@@ -8,9 +8,9 @@ const RATE_LIMIT_DELAY_MS = 500;
 const RETRY_ATTEMPTS = 1;
 const RETRY_DELAY_MS = 3000;
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-let lastCallTime = 0;
+let rateLimitChain = Promise.resolve();
 
 // --- Error Class ---
 
@@ -41,13 +41,9 @@ export class MetaApiError extends Error {
 
 // --- Rate Limiting ---
 
-async function enforceRateLimit(): Promise<void> {
-  const now = Date.now();
-  const elapsed = now - lastCallTime;
-  if (elapsed < RATE_LIMIT_DELAY_MS) {
-    await sleep(RATE_LIMIT_DELAY_MS - elapsed);
-  }
-  lastCallTime = Date.now();
+function enforceRateLimit(): Promise<void> {
+  rateLimitChain = rateLimitChain.then(() => sleep(RATE_LIMIT_DELAY_MS));
+  return rateLimitChain;
 }
 
 // --- Core GET ---

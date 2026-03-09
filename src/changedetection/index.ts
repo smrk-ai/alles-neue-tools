@@ -169,25 +169,6 @@ export class ChangeDetectionTool extends BaseTool {
     return this.buildReport(totalFound, totalNew, totalPushed, errors);
   }
 
-  private buildReport(
-    found: number,
-    newCount: number,
-    pushed: number,
-    errors: string[],
-  ): ToolRunReport {
-    return {
-      toolSlug: TOOL_SLUG,
-      city: this.city,
-      startedAt: new Date(),
-      finishedAt: new Date(),
-      durationMs: 0,
-      leadsFound: found,
-      leadsNew: newCount,
-      leadsPushed: pushed,
-      errors,
-      status: errors.length === 0 ? 'success' : 'partial',
-    };
-  }
 }
 
 /** Factory for orchestrator usage */

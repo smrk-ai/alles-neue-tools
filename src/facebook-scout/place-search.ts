@@ -8,8 +8,6 @@ import { SEARCH_QUERIES, PLACE_FIELDS, DEFAULT_DISTANCE, HOI_AN_CENTER } from '.
 
 const log = createLogger('facebook-scout');
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 // --- Place Search ---
 
 function getPageToken(): string {

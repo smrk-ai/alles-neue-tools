@@ -1,4 +1,5 @@
-import type { InstagramPost, PostAnalysisResult, AnalysisSignals, ExtractedInfo, CategoryGuess } from './types.js';
+import { guessCategory } from '../shared/utils.js';
+import type { InstagramPost, PostAnalysisResult, AnalysisSignals, ExtractedInfo } from './types.js';
 import { OPENING_SIGNALS, NAME_PATTERNS, MIN_CONFIDENCE } from './config.js';
 
 // --- Post Analysis ---
@@ -134,28 +135,6 @@ function extractInfoFromCaption(caption: string): ExtractedInfo {
     instagramHandle,
     mentionedHashtags,
   };
-}
-
-function guessCategory(caption: string): CategoryGuess | null {
-  const lower = caption.toLowerCase();
-
-  if (
-    /restaurant|food|dining|kitchen|cuisine|menu|dish|chef|eat|ăn|nhà hàng|quán ăn/.test(
-      lower,
-    )
-  )
-    return 'restaurants';
-
-  if (/cafe|café|coffee|cà phê|bakery|pastry|brunch|tea/.test(lower))
-    return 'cafes';
-
-  if (/bar|pub|cocktail|beer|wine|nightlife|bia|rượu/.test(lower))
-    return 'bars';
-
-  if (/hotel|resort|hostel|homestay|accommodation|villa|lodge|khách sạn/.test(lower))
-    return 'hotels';
-
-  return null;
 }
 
 function extractUrl(text: string): string | null {

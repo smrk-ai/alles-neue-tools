@@ -1,5 +1,5 @@
 import { BaseTool } from '../shared/tool-runner.js';
-import { getCityBySlug, getCityIdBySlug } from '../shared/city-config.js';
+import { getCityBySlug, getCityIdBySlug, ALL_CITIES_CONFIG } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
 import { findNew, markKnown } from '../shared/delta-store.js';
 import type { CityConfig, ToolRunReport, DeltaEntry, DeltaMarkEntry } from '../shared/types.js';
@@ -133,25 +133,6 @@ export class GoogleAlertsTool extends BaseTool {
     return this.buildReport(allItems.length, newItems.length, pushedCount, errors);
   }
 
-  private buildReport(
-    found: number,
-    newCount: number,
-    pushed: number,
-    errors: string[],
-  ): ToolRunReport {
-    return {
-      toolSlug: TOOL_SLUG,
-      city: this.city,
-      startedAt: new Date(),
-      finishedAt: new Date(),
-      durationMs: 0,
-      leadsFound: found,
-      leadsNew: newCount,
-      leadsPushed: pushed,
-      errors,
-      status: errors.length === 0 ? 'success' : 'partial',
-    };
-  }
 }
 
 /** Factory for orchestrator usage */

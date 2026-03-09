@@ -14,14 +14,13 @@ const BATCH_SIZE = 200;
 const PAGE_SIZE = 1000; // Supabase default limit
 const dryRun = process.argv.includes('--dry-run');
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyRecord = Record<string, any>;
+interface BackfillRow { id: string; name: string }
+interface CrossMatchRow { id: string; source: string; name: string; name_normalized: string | null; city_id: string; category: string | null; canonical_id: string | null }
 
-async function fetchPaginated(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  buildQuery: (from: number, to: number) => PromiseLike<{ data: AnyRecord[] | null; error: any }>,
-): Promise<AnyRecord[]> {
-  const all: AnyRecord[] = [];
+async function fetchPaginated<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const all: T[] = [];
   let offset = 0;
   while (true) {
     const { data, error } = await buildQuery(offset, offset + PAGE_SIZE - 1);
@@ -37,12 +36,12 @@ async function fetchPaginated(
 async function backfillNormalized() {
   const db = getSupabaseClient();
 
-  const entries = await fetchPaginated((from, to) =>
+  const entries = await fetchPaginated<BackfillRow>((from, to) =>
     db.from('known_places')
       .select('id, name')
       .not('name', 'is', null)
       .is('name_normalized', null)
-      .range(from, to),
+      .range(from, to) as PromiseLike<{ data: BackfillRow[] | null; error: { message: string } | null }>,
   );
 
   if (entries.length === 0) {
@@ -56,7 +55,7 @@ async function backfillNormalized() {
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
     const updates = batch
-      .map((e) => ({ id: e.id, name_normalized: normalizeName(e.name!) }))
+      .map((e) => ({ id: e.id, name_normalized: normalizeName(e.name) }))
       .filter((u) => u.name_normalized); // skip empty normalization
 
     if (dryRun) {
@@ -64,18 +63,23 @@ async function backfillNormalized() {
         const orig = batch.find((e) => e.id === u.id);
         console.log(`  "${orig?.name}" → "${u.name_normalized}"`);
       }
-      if (updates.length > 5) console.log(`  ... und ${updates.length - 5} weitere`);
+      if (updates.length > 5) console.log(`  ... and ${updates.length - 5} more`);
       updated += updates.length;
       continue;
     }
 
     // Supabase doesn't support bulk update with different values per row,
-    // so we use individual updates batched via Promise.all
-    const promises = updates.map((u) =>
-      db.from('known_places').update({ name_normalized: u.name_normalized }).eq('id', u.id),
-    );
-    const results = await Promise.all(promises);
-    const failed = results.filter((r) => r.error);
+    // so we use individual updates with capped concurrency
+    const DB_CONCURRENCY = 10;
+    const allResults: { error: unknown }[] = [];
+    for (let j = 0; j < updates.length; j += DB_CONCURRENCY) {
+      const chunk = updates.slice(j, j + DB_CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map((u) => db.from('known_places').update({ name_normalized: u.name_normalized }).eq('id', u.id)),
+      );
+      allResults.push(...chunkResults);
+    }
+    const failed = allResults.filter((r) => r.error);
     if (failed.length > 0) {
       console.error(`${failed.length} updates failed in batch ${i / BATCH_SIZE}`);
     }
@@ -88,13 +92,13 @@ async function backfillNormalized() {
 async function crossMatchExisting() {
   const db = getSupabaseClient();
 
-  const entries = await fetchPaginated((from, to) =>
+  const entries = await fetchPaginated<CrossMatchRow>((from, to) =>
     db.from('known_places')
       .select('id, source, name, name_normalized, city_id, category, canonical_id')
       .not('name_normalized', 'is', null)
       .is('canonical_id', null)
       .order('source', { ascending: true })
-      .range(from, to),
+      .range(from, to) as PromiseLike<{ data: CrossMatchRow[] | null; error: { message: string } | null }>,
   );
 
   if (entries.length === 0) {
@@ -119,7 +123,7 @@ async function crossMatchExisting() {
     const candidates: MatchCandidate[] = group.map((e) => ({
       id: e.id,
       source: e.source,
-      name: e.name ?? '',
+      name: e.name,
       nameNormalized: e.name_normalized,
       canonicalId: e.canonical_id,
     }));
@@ -132,7 +136,7 @@ async function crossMatchExisting() {
         (c) => c.source !== entry.source && c.id !== entry.id && !c.canonicalId,
       );
 
-      const match = findBestMatch(entry.name!, otherCandidates);
+      const match = findBestMatch(entry.name, otherCandidates);
       if (!match) continue;
 
       // Determine canonical direction
