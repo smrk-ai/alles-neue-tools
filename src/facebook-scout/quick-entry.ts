@@ -85,7 +85,7 @@ async function quickEntry(args: QuickEntryArgs): Promise<void> {
     address: pageDetails.single_line_address || null,
     city: args.city || 'Hoi An',
     category_guess:
-      args.category || mapFacebookCategory(pageDetails as FacebookPlace),
+      args.category ?? (pageDetails.id ? mapFacebookCategory(pageDetails as FacebookPlace) : null),
     phone: pageDetails.phone || null,
     website: pageDetails.website || null,
     facebook: args.url,

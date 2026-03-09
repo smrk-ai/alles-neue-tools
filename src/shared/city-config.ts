@@ -104,3 +104,17 @@ export function getCityIdByName(name: string): string | undefined {
   ensureLoaded();
   return citiesCache.find((c) => c.name === name)?.id;
 }
+
+/**
+ * Synthetic CityConfig for tools that operate across all cities (e.g. google-alerts, changedetection).
+ * Used when BaseTool.execute() requires a CityConfig but the tool handles multi-city internally.
+ */
+export const ALL_CITIES_CONFIG: CityConfig = {
+  id: '',
+  name: 'All Cities',
+  slug: 'all',
+  country: 'VN',
+  boundary: [],
+  resolution: 8,
+  categories: [],
+};

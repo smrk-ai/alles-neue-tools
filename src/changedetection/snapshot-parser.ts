@@ -356,5 +356,3 @@ function parseCommercialListing(text: string, config: WatchConfig): ParsedChange
 
   return items;
 }
-
-// guessCategory is now imported from shared/utils.ts

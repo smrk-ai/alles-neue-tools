@@ -1,5 +1,5 @@
 import { BaseTool } from '../shared/tool-runner.js';
-import { getCityBySlug, getCityIdBySlug } from '../shared/city-config.js';
+import { getCityBySlug, getCityIdBySlug, ALL_CITIES_CONFIG } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
 import { findNew, markKnown } from '../shared/delta-store.js';
 import type { CityConfig, ToolRunReport, DeltaEntry, DeltaMarkEntry } from '../shared/types.js';
@@ -211,7 +211,7 @@ async function main() {
   }
 
   const cityConfig: CityConfig = options.city === 'all'
-    ? { id: '', name: 'All Cities', slug: 'all', country: 'VN', boundary: [], resolution: 8, categories: [] }
+    ? ALL_CITIES_CONFIG
     : getCityBySlug(options.city)!;
 
   const tool = new ChangeDetectionTool(options);
