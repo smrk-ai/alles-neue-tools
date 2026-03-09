@@ -51,7 +51,25 @@ export function transformToLead(
 }
 
 /**
+ * Build a reverse lookup map: placeId → cellId.
+ * Use this before looping over many places to avoid O(n*m) repeated scans.
+ */
+export function buildCellLookup(
+  idsByCell: Record<string, string[]>,
+): Map<string, string> {
+  const lookup = new Map<string, string>();
+  for (const [cellId, ids] of Object.entries(idsByCell)) {
+    for (const id of ids) {
+      // First cell wins (place may appear in multiple overlapping cells)
+      if (!lookup.has(id)) lookup.set(id, cellId);
+    }
+  }
+  return lookup;
+}
+
+/**
  * Find which H3 cell a place was discovered in.
+ * For bulk lookups, prefer buildCellLookup() + map.get() instead.
  */
 export function findCellForPlace(
   placeId: string,

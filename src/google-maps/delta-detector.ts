@@ -1,6 +1,7 @@
 import { findNew, markKnown } from '../shared/delta-store.js';
 import { createLogger } from '../shared/logger.js';
 import type { CategoryGuess, CityConfig } from '../shared/types.js';
+import { findCellForPlace } from './lead-transformer.js';
 import type { DeltaResult, GridScanResult } from './types.js';
 
 const log = createLogger('google-maps');
@@ -50,21 +51,15 @@ export async function markAsProcessed(
   nameById?: Map<string, string>,
   categoryById?: Map<string, CategoryGuess>,
 ): Promise<void> {
-  const entries = newIds.map((id) => {
-    const cell = Object.entries(scanResult.idsByCell).find(([_, ids]) =>
-      ids.includes(id),
-    );
-
-    return {
-      source: 'google_maps' as const,
-      sourceId: id,
-      city: city.name,
-      cityId: city.id,
-      h3Cell: cell ? cell[0] : undefined,
-      name: nameById?.get(id),
-      category: categoryById?.get(id),
-    };
-  });
+  const entries = newIds.map((id) => ({
+    source: 'google_maps' as const,
+    sourceId: id,
+    city: city.name,
+    cityId: city.id,
+    h3Cell: findCellForPlace(id, scanResult.idsByCell),
+    name: nameById?.get(id),
+    category: categoryById?.get(id),
+  }));
 
   await markKnown(entries);
   log.info(`Marked ${entries.length} places as known`);

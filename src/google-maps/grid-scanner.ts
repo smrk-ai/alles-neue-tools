@@ -25,9 +25,11 @@ function getRadiusForCell(cellId: string): number {
   return RADIUS_BY_RESOLUTION[res] ?? DEFAULT_RADIUS;
 }
 
-// Subdivision tracking (reset per scan)
-let subdivisionCount = 0;
-let maxCapCount = 0;
+/** Mutable counters scoped to a single scanCity() invocation. */
+interface ScanCounters {
+  subdivisions: number;
+  maxCaps: number;
+}
 
 /**
  * Scan a single cell/category combo, subdividing recursively if the API cap is hit.
@@ -37,6 +39,7 @@ async function scanCellCategory(
   cellId: string,
   category: string,
   cellLabel: string,
+  counters: ScanCounters,
 ): Promise<string[]> {
   const center = getCellCenter(cellId);
   const ids = await withRetry(() =>
@@ -57,7 +60,7 @@ async function scanCellCategory(
   // Cap hit — check if we can subdivide deeper
   const res = getResolution(cellId);
   if (res >= MAX_SUBDIVISION_RESOLUTION) {
-    maxCapCount++;
+    counters.maxCaps++;
     log.debug(
       `${cellLabel} | ${category}: cap hit at max res ${res} — accepting ${ids.length} as best effort`,
     );
@@ -67,7 +70,7 @@ async function scanCellCategory(
   // Subdivide into 7 children
   const childRes = res + 1;
   const children = getChildCells(cellId);
-  subdivisionCount++;
+  counters.subdivisions++;
   log.debug(
     `${cellLabel} | ${category}: cap hit (${ids.length}), subdividing to res ${childRes} (${children.length} children)`,
   );
@@ -75,7 +78,7 @@ async function scanCellCategory(
   // Keep parent IDs as a head start, add children's IDs on top
   const allIds = new Set(ids);
   for (const child of children) {
-    const childIds = await scanCellCategory(child, category, cellLabel);
+    const childIds = await scanCellCategory(child, category, cellLabel, counters);
     childIds.forEach((id) => allIds.add(id));
   }
 
@@ -91,10 +94,7 @@ export async function scanCity(city: CityConfig): Promise<GridScanResult> {
   const allIds = new Map<string, Set<string>>(); // category → Set<placeId>
   const idsByCell = new Map<string, string[]>();
   const errors: ScanError[] = [];
-
-  // Reset subdivision counters
-  subdivisionCount = 0;
-  maxCapCount = 0;
+  const counters: ScanCounters = { subdivisions: 0, maxCaps: 0 };
 
   const cells = getAllScanCells(city);
   const categories = city.categories;
@@ -110,7 +110,7 @@ export async function scanCity(city: CityConfig): Promise<GridScanResult> {
 
     for (const category of categories) {
       try {
-        const ids = await scanCellCategory(cell, category, cellLabel);
+        const ids = await scanCellCategory(cell, category, cellLabel, counters);
 
         ids.forEach((id) => cellIds.push(id));
 
@@ -172,9 +172,9 @@ export async function scanCity(city: CityConfig): Promise<GridScanResult> {
     { categories: result.idsByCategory, errors: errors.length },
   );
 
-  if (subdivisionCount > 0) {
+  if (counters.subdivisions > 0) {
     log.info(
-      `Subdivisions: ${subdivisionCount} cells subdivided, ${maxCapCount} at max resolution`,
+      `Subdivisions: ${counters.subdivisions} cells subdivided, ${counters.maxCaps} at max resolution`,
     );
   }
 

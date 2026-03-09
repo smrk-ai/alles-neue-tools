@@ -6,7 +6,7 @@ import type { CategoryGuess, CityConfig, ToolRunReport, DeltaMarkEntry } from '.
 import { scanCity } from './grid-scanner.js';
 import { detectNew, markAsProcessed } from './delta-detector.js';
 import { getBasicDetailsBatch } from './places-client.js';
-import { transformToLead, findCellForPlace } from './lead-transformer.js';
+import { transformToLead, buildCellLookup } from './lead-transformer.js';
 import { mapCategory, mapCategoryFromPrimaryType } from './category-mapper.js';
 import type { GoogleMapsToolOptions, GridScanResult } from './types.js';
 
@@ -74,6 +74,9 @@ export class GoogleMapsTool extends BaseTool {
       if (cat) categoryById.set(d.id, cat);
     }
 
+    // Build reverse lookup once: placeId → cellId (avoids O(n*m) per-place scan)
+    const cellLookup = buildCellLookup(scanResult.idsByCell);
+
     // Step 5: Cross-source name matching
     const crossCheckEntries: DeltaMarkEntry[] = details
       .filter((d) => d.businessStatus !== 'CLOSED_PERMANENTLY')
@@ -82,7 +85,7 @@ export class GoogleMapsTool extends BaseTool {
         sourceId: d.id,
         city: city.name,
         cityId: city.id,
-        h3Cell: findCellForPlace(d.id, scanResult.idsByCell),
+        h3Cell: cellLookup.get(d.id),
         name: d.displayName?.text,
         category: categoryById.get(d.id),
       }));
@@ -113,7 +116,7 @@ export class GoogleMapsTool extends BaseTool {
         transformToLead(d, {
           city: city.name,
           cityId: city.id,
-          h3Cell: findCellForPlace(d.id, scanResult.idsByCell),
+          h3Cell: cellLookup.get(d.id),
           scanDate: deltaResult.scanDate,
           isBaseline: this.baselineOnly,
         }),

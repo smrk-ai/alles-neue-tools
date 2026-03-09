@@ -91,7 +91,7 @@ export class OsmMonitorTool extends BaseTool {
     }
 
     // Step 4: Transform new elements to pipeline leads
-    const leads = newElements.map((el) => transformElement(el, city.name));
+    const leads = newElements.map((el) => transformElement(el, city.name, city.id));
 
     for (const lead of leads) {
       this.log.debug(`  New: ${lead.name ?? '(unnamed)'} | ${lead.category_guess ?? '?'} | ${lead.source_id}`);

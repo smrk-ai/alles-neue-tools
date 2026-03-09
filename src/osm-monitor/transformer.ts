@@ -8,7 +8,7 @@ import type { OverpassElement } from './types.js';
 /**
  * Transform an OSM Overpass element into a pipeline lead.
  */
-export function transformElement(element: OverpassElement, city: string): PipelineLeadInput {
+export function transformElement(element: OverpassElement, city: string, cityId?: string): PipelineLeadInput {
   const lat = element.lat ?? element.center?.lat;
   const lon = element.lon ?? element.center?.lon;
 
@@ -19,6 +19,7 @@ export function transformElement(element: OverpassElement, city: string): Pipeli
     name: extractName(element.tags),
     address: buildAddress(element.tags),
     city,
+    city_id: cityId,
     category_guess: mapCategory(element.tags),
     phone: element.tags.phone || element.tags['contact:phone'] || null,
     website: element.tags.website || element.tags['contact:website'] || null,
