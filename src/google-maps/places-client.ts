@@ -3,7 +3,7 @@ import { createLogger } from '../shared/logger.js';
 import { sleep } from '../shared/utils.js';
 import { canMakeCall, incrementBudget, getAvailableDetailTier } from '../shared/budget-tracker.js';
 import type { DetailTier } from '../shared/types.js';
-import type { NearbySearchParams, TextSearchParams, PlaceBasicDetails } from './types.js';
+import type { TextSearchParams, PlaceBasicDetails } from './types.js';
 import { PlacesApiError } from './types.js';
 
 const log = createLogger('google-maps');
@@ -71,55 +71,6 @@ async function withRetry<T>(
     }
   }
   throw new Error('Unreachable');
-}
-
-// --- Nearby Search (Pro Tier, $0.032/Call — NOT free with IDs only) ---
-
-export async function searchNearbyIDs(
-  params: NearbySearchParams,
-): Promise<string[]> {
-  const apiKey = getApiKey();
-
-  const response = await fetch(`${PLACES_API_BASE}/places:searchNearby`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'places.id',
-    },
-    body: JSON.stringify({
-      includedTypes: params.includedTypes,
-      locationRestriction: {
-        circle: {
-          center: {
-            latitude: params.lat,
-            longitude: params.lng,
-          },
-          radius: params.radius,
-        },
-      },
-      maxResultCount: 20,
-      rankPreference: 'DISTANCE',
-      languageCode: 'en',
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new PlacesApiError(
-      `Nearby Search failed: ${response.status}`,
-      response.status,
-      error,
-    );
-  }
-
-  const data = await response.json();
-
-  if (!data.places || data.places.length === 0) {
-    return [];
-  }
-
-  return data.places.map((p: { id: string }) => p.id);
 }
 
 // --- Text Search (IDs Only = $0, unlimited) ---
@@ -200,56 +151,6 @@ async function getPlaceDetails(placeId: string, fieldMask: string): Promise<Plac
   }
 
   return response.json();
-}
-
-// --- Place Details (Basic Fields = Pro Tier) ---
-
-export async function getBasicDetails(
-  placeId: string,
-): Promise<PlaceBasicDetails> {
-  const apiKey = getApiKey();
-
-  const response = await fetch(`${PLACES_API_BASE}/places/${placeId}`, {
-    headers: {
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': BASIC_FIELDS,
-    },
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new PlacesApiError(
-      `Place Details failed for ${placeId}: ${response.status}`,
-      response.status,
-      error,
-    );
-  }
-
-  return response.json();
-}
-
-// --- Batch Details (sequential with delay) ---
-
-export async function getBasicDetailsBatch(
-  placeIds: string[],
-  delayMs: number = 100,
-): Promise<PlaceBasicDetails[]> {
-  const results: PlaceBasicDetails[] = [];
-
-  for (const placeId of placeIds) {
-    try {
-      const detail = await withRetry(() => getBasicDetails(placeId));
-      results.push(detail);
-    } catch (error) {
-      log.warn(
-        `Failed to get details for ${placeId}: ${error instanceof Error ? error.message : error}`,
-      );
-    }
-
-    if (delayMs > 0) await sleep(delayMs);
-  }
-
-  return results;
 }
 
 // --- Tiered Detail Fetching (budget-aware) ---

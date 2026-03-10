@@ -61,13 +61,6 @@ export interface DeltaResult {
 
 // --- Places Client Types ---
 
-export interface NearbySearchParams {
-  lat: number;
-  lng: number;
-  radius: number;
-  includedTypes: string[];
-}
-
 export interface TextSearchParams {
   lat: number;
   lng: number;
