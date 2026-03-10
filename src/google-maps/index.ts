@@ -1,11 +1,11 @@
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
-import { updateCategoryBulk, findNewWithCrossCheck, markCrossMatched } from '../shared/delta-store.js';
+import { updateCategoryBulk, findNewWithCrossCheck, markCrossMatched, markKnown } from '../shared/delta-store.js';
 import type { CategoryGuess, CityConfig, ToolRunReport, DeltaMarkEntry } from '../shared/types.js';
 import { scanCity } from './grid-scanner.js';
 import { detectNew, markAsProcessed } from './delta-detector.js';
-import { getBasicDetailsBatch } from './places-client.js';
+import { getTieredDetailsBatch } from './places-client.js';
 import { transformToLead, buildCellLookup } from './lead-transformer.js';
 import { mapCategory, mapCategoryFromPrimaryType } from './category-mapper.js';
 import type { GoogleMapsToolOptions, GridScanResult } from './types.js';
@@ -62,16 +62,29 @@ export class GoogleMapsTool extends BaseTool {
       `Found ${deltaResult.newCount} new places. Fetching details...`,
     );
 
-    // Step 4: Fetch details for new places (Basic tier)
-    const details = await getBasicDetailsBatch(deltaResult.newIds);
+    // Step 4: Fetch details for new places (tiered, budget-aware)
+    const { details, tier, queuedIds } = await getTieredDetailsBatch(deltaResult.newIds);
 
-    // Build name + category lookups for delta store
+    if (queuedIds.length > 0) {
+      this.log.info(`${queuedIds.length} IDs queued for next month (all tiers exhausted)`);
+      await this.markQueued(queuedIds, city, scanResult);
+    }
+
+    this.log.info(`Fetched ${details.length} details via tier: ${tier}`);
+
+    // Build name + category + rawData lookups for delta store
     const nameById = new Map<string, string>();
     const categoryById = new Map<string, CategoryGuess>();
+    const rawDataById = new Map<string, Record<string, unknown>>();
     for (const d of details) {
       if (d.displayName?.text) nameById.set(d.id, d.displayName.text);
       const cat = mapCategoryFromPrimaryType(d.primaryType) ?? mapCategory(d.types);
       if (cat) categoryById.set(d.id, cat);
+      rawDataById.set(d.id, {
+        tier,
+        fetched_at: new Date().toISOString(),
+        ...d,
+      });
     }
 
     // Build reverse lookup once: placeId → cellId (avoids O(n*m) per-place scan)
@@ -145,7 +158,7 @@ export class GoogleMapsTool extends BaseTool {
       ? [...trulyNewIds].filter((id) => !failedPlaceIds.has(id))
       : [...trulyNewIds];
     if (idsToMark.length > 0) {
-      await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById);
+      await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById, rawDataById);
     }
 
     // Step 9: Build report
@@ -158,6 +171,25 @@ export class GoogleMapsTool extends BaseTool {
       pushedCount,
       scanErrors,
     );
+  }
+
+  /**
+   * Mark IDs as known without detail data (queued for next month).
+   */
+  private async markQueued(
+    ids: string[],
+    city: CityConfig,
+    scanResult: GridScanResult,
+  ): Promise<void> {
+    const entries = ids.map((id) => ({
+      source: 'google_maps' as const,
+      sourceId: id,
+      city: city.name,
+      cityId: city.id,
+      h3Cell: buildCellLookup(scanResult.idsByCell).get(id),
+    }));
+    await markKnown(entries);
+    this.log.info(`Marked ${ids.length} IDs as queued (pending details)`);
   }
 
   /**

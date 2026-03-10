@@ -107,6 +107,7 @@ export interface DeltaMarkEntry extends DeltaEntry {
   h3Cell?: string;
   name?: string;
   category?: CategoryGuess;
+  rawData?: Record<string, unknown>;
 }
 
 export interface DeltaStats {

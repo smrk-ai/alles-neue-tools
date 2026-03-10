@@ -50,6 +50,7 @@ export async function markAsProcessed(
   scanResult: GridScanResult,
   nameById?: Map<string, string>,
   categoryById?: Map<string, CategoryGuess>,
+  rawDataById?: Map<string, Record<string, unknown>>,
 ): Promise<void> {
   const entries = newIds.map((id) => ({
     source: 'google_maps' as const,
@@ -59,6 +60,7 @@ export async function markAsProcessed(
     h3Cell: findCellForPlace(id, scanResult.idsByCell),
     name: nameById?.get(id),
     category: categoryById?.get(id),
+    rawData: rawDataById?.get(id),
   }));
 
   await markKnown(entries);

@@ -1,6 +1,8 @@
 import { config } from '../shared/config.js';
 import { createLogger } from '../shared/logger.js';
 import { sleep } from '../shared/utils.js';
+import { canMakeCall, incrementBudget, getAvailableDetailTier } from '../shared/budget-tracker.js';
+import type { DetailTier } from '../shared/types.js';
 import type { NearbySearchParams, PlaceBasicDetails } from './types.js';
 import { PlacesApiError } from './types.js';
 
@@ -18,6 +20,14 @@ const BASIC_FIELDS = [
   'googleMapsUri',
   'primaryType',
   'primaryTypeDisplayName',
+].join(',');
+
+const ESSENTIALS_FIELDS = [
+  'id',
+  'formattedAddress',
+  'location',
+  'types',
+  'addressComponents',
 ].join(',');
 
 const RETRY_ATTEMPTS = 2;
@@ -112,6 +122,29 @@ export async function searchNearbyIDs(
   return data.places.map((p: { id: string }) => p.id);
 }
 
+// --- Place Details (generic field mask) ---
+
+async function getPlaceDetails(placeId: string, fieldMask: string): Promise<PlaceBasicDetails> {
+  const apiKey = getApiKey();
+  const response = await fetch(`${PLACES_API_BASE}/places/${placeId}`, {
+    headers: {
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': fieldMask,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new PlacesApiError(
+      `Place Details failed for ${placeId}: ${response.status}`,
+      response.status,
+      error,
+    );
+  }
+
+  return response.json();
+}
+
 // --- Place Details (Basic Fields = Pro Tier) ---
 
 export async function getBasicDetails(
@@ -160,6 +193,66 @@ export async function getBasicDetailsBatch(
   }
 
   return results;
+}
+
+// --- Tiered Detail Fetching (budget-aware) ---
+
+export interface TieredDetailResult {
+  details: PlaceBasicDetails[];
+  tier: DetailTier;
+  queuedIds: string[];
+}
+
+export async function getTieredDetailsBatch(
+  placeIds: string[],
+  toolSlug: string = 'google-maps',
+  delayMs: number = 100,
+): Promise<TieredDetailResult> {
+  const details: PlaceBasicDetails[] = [];
+  const queuedIds: string[] = [];
+  let currentTier = await getAvailableDetailTier(toolSlug);
+
+  if (currentTier === 'queued') {
+    log.warn(`All budget tiers exhausted — queueing all ${placeIds.length} IDs`);
+    return { details: [], tier: 'queued', queuedIds: [...placeIds] };
+  }
+
+  log.info(`Starting tiered detail fetch: ${placeIds.length} places, tier: ${currentTier}`);
+
+  for (let i = 0; i < placeIds.length; i++) {
+    const placeId = placeIds[i];
+
+    // Check budget BEFORE the API call
+    const canCall = await canMakeCall(toolSlug, currentTier);
+
+    if (!canCall) {
+      // Current tier exhausted — try next tier
+      log.info(`Tier ${currentTier} exhausted after ${details.length} calls, checking next tier...`);
+      currentTier = await getAvailableDetailTier(toolSlug);
+
+      if (currentTier === 'queued') {
+        log.warn(`All tiers exhausted — queueing remaining ${placeIds.length - i} IDs`);
+        queuedIds.push(...placeIds.slice(i));
+        break;
+      }
+    }
+
+    try {
+      const fieldMask = currentTier === 'place_details_essentials' ? ESSENTIALS_FIELDS : BASIC_FIELDS;
+      const detail = await withRetry(() => getPlaceDetails(placeId, fieldMask));
+      details.push(detail);
+
+      // Increment budget AFTER successful call
+      await incrementBudget(toolSlug, currentTier);
+    } catch (error) {
+      log.warn(`Failed to get details for ${placeId}: ${error instanceof Error ? error.message : error}`);
+    }
+
+    if (delayMs > 0) await sleep(delayMs);
+  }
+
+  log.info(`Tiered fetch complete: ${details.length} fetched (${currentTier}), ${queuedIds.length} queued`);
+  return { details, tier: currentTier, queuedIds };
 }
 
 // Re-export for use by grid-scanner
