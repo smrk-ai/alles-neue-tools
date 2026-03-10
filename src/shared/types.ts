@@ -126,3 +126,23 @@ export interface CrossMatchResult {
     score: number;
   };
 }
+
+// --- API Budget ---
+
+export type ApiSku =
+  | 'text_search_ids_only'
+  | 'place_details_pro'
+  | 'place_details_essentials';
+
+export interface BudgetStatus {
+  sku: ApiSku;
+  month: string;
+  callsUsed: number;
+  callsLimit: number;
+  callsSafety: number;
+  remaining: number;
+  exhausted: boolean;
+  usagePercent: number;
+}
+
+export type DetailTier = 'place_details_pro' | 'place_details_essentials' | 'queued';
