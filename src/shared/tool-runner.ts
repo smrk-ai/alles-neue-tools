@@ -1,11 +1,53 @@
 import { config } from './config.js';
 import { createLogger, type Logger } from './logger.js';
 import { loadCities } from './city-config.js';
+import { getSupabaseClient } from './supabase-client.js';
 import type { CityConfig, ToolRunOptions, ToolRunReport } from './types.js';
 
 // --- Tool Runs API Client ---
 
 const toolRunLog = createLogger('tool-runs');
+
+/**
+ * Check if a tool is already running (started within last 20 minutes).
+ * Prevents duplicate runs when run-all and individual crons overlap.
+ */
+async function isToolAlreadyRunning(toolSlug: string): Promise<boolean> {
+  try {
+    const db = getSupabaseClient();
+
+    // Look up tool_id from tool_configs
+    const { data: toolConfig, error: configError } = await db
+      .from('tool_configs')
+      .select('id')
+      .eq('slug', toolSlug)
+      .single();
+
+    if (configError || !toolConfig) {
+      toolRunLog.warn(`Lock check: tool config not found for "${toolSlug}"`);
+      return false;
+    }
+
+    const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+
+    const { data, error } = await db
+      .from('tool_runs')
+      .select('id')
+      .eq('tool_id', toolConfig.id)
+      .eq('status', 'running')
+      .gte('started_at', twentyMinutesAgo)
+      .limit(1);
+
+    if (error) {
+      toolRunLog.warn(`Lock check failed: ${error.message}`);
+      return false;
+    }
+
+    return (data?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
 
 export async function createToolRun(toolSlug: string): Promise<string | null> {
   try {
@@ -107,6 +149,24 @@ export abstract class BaseTool {
    * Creates a tool run record, executes, and reports results.
    */
   async execute(city: CityConfig): Promise<ToolRunReport> {
+    // Lock-Check: Verhindert Duplikat-Runs (run-all + Einzel-Cron gleichzeitig)
+    const alreadyRunning = await isToolAlreadyRunning(this.toolSlug);
+    if (alreadyRunning) {
+      this.log.warn(`Tool "${this.toolSlug}" is already running — aborting to prevent duplicate run`);
+      return {
+        toolSlug: this.toolSlug,
+        city: city.slug,
+        startedAt: new Date(),
+        finishedAt: new Date(),
+        durationMs: 0,
+        leadsFound: 0,
+        leadsNew: 0,
+        leadsPushed: 0,
+        errors: ['Aborted: duplicate run detected'],
+        status: 'failed',
+      };
+    }
+
     const startedAt = new Date();
     this.log.info(`Starting run for ${city.name}`, { dryRun: this.dryRun });
 
