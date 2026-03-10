@@ -68,6 +68,13 @@ export interface NearbySearchParams {
   includedTypes: string[];
 }
 
+export interface TextSearchParams {
+  lat: number;
+  lng: number;
+  radius: number;
+  includedType: string;
+}
+
 // --- Error ---
 
 export class PlacesApiError extends Error {

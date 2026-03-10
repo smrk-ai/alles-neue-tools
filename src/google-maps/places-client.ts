@@ -3,7 +3,7 @@ import { createLogger } from '../shared/logger.js';
 import { sleep } from '../shared/utils.js';
 import { canMakeCall, incrementBudget, getAvailableDetailTier } from '../shared/budget-tracker.js';
 import type { DetailTier } from '../shared/types.js';
-import type { NearbySearchParams, PlaceBasicDetails } from './types.js';
+import type { NearbySearchParams, TextSearchParams, PlaceBasicDetails } from './types.js';
 import { PlacesApiError } from './types.js';
 
 const log = createLogger('google-maps');
@@ -73,7 +73,7 @@ async function withRetry<T>(
   throw new Error('Unreachable');
 }
 
-// --- Nearby Search (IDs Only = FREE) ---
+// --- Nearby Search (Pro Tier, $0.032/Call — NOT free with IDs only) ---
 
 export async function searchNearbyIDs(
   params: NearbySearchParams,
@@ -108,6 +108,63 @@ export async function searchNearbyIDs(
     const error = await response.json().catch(() => null);
     throw new PlacesApiError(
       `Nearby Search failed: ${response.status}`,
+      response.status,
+      error,
+    );
+  }
+
+  const data = await response.json();
+
+  if (!data.places || data.places.length === 0) {
+    return [];
+  }
+
+  return data.places.map((p: { id: string }) => p.id);
+}
+
+// --- Text Search (IDs Only = $0, unlimited) ---
+// SKU: "Text Search Essentials (IDs Only)" — kostenlos, kein Limit
+// locationRestriction bei Text Search nur als Rectangle, nicht Circle!
+
+function radiusToBoundingBox(lat: number, lng: number, radiusMeters: number) {
+  // 1° latitude ≈ 111,320m everywhere
+  const latDelta = radiusMeters / 111_320;
+  // 1° longitude shrinks with cos(lat)
+  const lngDelta = radiusMeters / (111_320 * Math.cos((lat * Math.PI) / 180));
+  return {
+    low: { latitude: lat - latDelta, longitude: lng - lngDelta },
+    high: { latitude: lat + latDelta, longitude: lng + lngDelta },
+  };
+}
+
+export async function searchTextIDs(
+  params: TextSearchParams,
+): Promise<string[]> {
+  const apiKey = getApiKey();
+  const rect = radiusToBoundingBox(params.lat, params.lng, params.radius);
+
+  const response = await fetch(`${PLACES_API_BASE}/places:searchText`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': apiKey,
+      'X-Goog-FieldMask': 'places.id',
+    },
+    body: JSON.stringify({
+      textQuery: params.includedType,
+      includedType: params.includedType,
+      locationRestriction: {
+        rectangle: rect,
+      },
+      maxResultCount: 20,
+      languageCode: 'en',
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new PlacesApiError(
+      `Text Search failed: ${response.status}`,
       response.status,
       error,
     );

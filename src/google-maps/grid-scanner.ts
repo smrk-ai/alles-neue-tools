@@ -3,7 +3,7 @@ import { getAllScanCells, getCellCenter, getChildCells } from '../shared/h3-grid
 import { createLogger } from '../shared/logger.js';
 import { sleep } from '../shared/utils.js';
 import type { CityConfig } from '../shared/types.js';
-import { searchNearbyIDs, withRetry } from './places-client.js';
+import { searchTextIDs, withRetry } from './places-client.js';
 import type { GridScanResult, ScanError } from './types.js';
 
 const log = createLogger('google-maps');
@@ -43,11 +43,11 @@ async function scanCellCategory(
 ): Promise<string[]> {
   const center = getCellCenter(cellId);
   const ids = await withRetry(() =>
-    searchNearbyIDs({
+    searchTextIDs({
       lat: center.lat,
       lng: center.lng,
       radius: getRadiusForCell(cellId),
-      includedTypes: [category],
+      includedType: category,
     }),
   );
 
