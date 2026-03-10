@@ -24,6 +24,7 @@ interface ToolFactory {
 interface RunConfig {
   city?: string;
   mode?: string; // 'normal' | 'dry_run' | 'baseline_only'
+  isActive?: boolean;
 }
 
 async function fetchRunConfig(slug: string): Promise<RunConfig> {
@@ -31,7 +32,7 @@ async function fetchRunConfig(slug: string): Promise<RunConfig> {
     const db = getSupabaseClient();
     const { data, error } = await db
       .from('tool_configs')
-      .select('config')
+      .select('config, is_active')
       .eq('slug', slug)
       .single();
 
@@ -41,7 +42,8 @@ async function fetchRunConfig(slug: string): Promise<RunConfig> {
     }
 
     const config = data.config as Record<string, unknown>;
-    return (config?.run_config as RunConfig) || {};
+    const runConfig = (config?.run_config as RunConfig) || {};
+    return { ...runConfig, isActive: data.is_active };
   } catch (err) {
     console.warn(`[run-tool] Failed to fetch run_config:`, err);
     return {};
@@ -113,6 +115,11 @@ async function main() {
   // Priority: explicit CLI flags (--dry-run, --baseline-only) > DB run_config > defaults
   // For city: if CLI passes "all" (entrypoint.sh default), DB config has priority
   const dbConfig = await fetchRunConfig(opts.slug);
+
+  if (dbConfig.isActive === false) {
+    console.log(`[run-tool] Tool "${opts.slug}" is deactivated (is_active=false). Exiting.`);
+    process.exit(0);
+  }
 
   const effectiveCity = (opts.city === 'all' && dbConfig.city) ? dbConfig.city : opts.city;
   const effectiveDryRun = opts.dryRun || dbConfig.mode === 'dry_run';
