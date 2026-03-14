@@ -23,6 +23,20 @@ function getCurrentMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function toBudgetStatus(sku: ApiSku, month: string, used: number, limit: number, safety: number): BudgetStatus {
+  const remaining = safety - used;
+  return {
+    sku,
+    month,
+    callsUsed: used,
+    callsLimit: limit,
+    callsSafety: safety,
+    remaining: Math.max(0, remaining),
+    exhausted: remaining <= 0,
+    usagePercent: used === 0 ? 0 : Math.round((used / safety) * 100),
+  };
+}
+
 /**
  * Get budget status for a SKU in the current month.
  * Auto-creates the entry if it doesn't exist yet.
@@ -42,17 +56,7 @@ export async function getBudgetStatus(toolSlug: string, sku: ApiSku): Promise<Bu
     .single();
 
   if (existing) {
-    const remaining = existing.calls_safety - existing.calls_used;
-    return {
-      sku,
-      month,
-      callsUsed: existing.calls_used,
-      callsLimit: existing.calls_limit,
-      callsSafety: existing.calls_safety,
-      remaining: Math.max(0, remaining),
-      exhausted: remaining <= 0,
-      usagePercent: Math.round((existing.calls_used / existing.calls_safety) * 100),
-    };
+    return toBudgetStatus(sku, month, existing.calls_used, existing.calls_limit, existing.calls_safety);
   }
 
   // Create new entry for this month
@@ -80,32 +84,13 @@ export async function getBudgetStatus(toolSlug: string, sku: ApiSku): Promise<Bu
       .single();
 
     if (retry) {
-      const remaining = retry.calls_safety - retry.calls_used;
-      return {
-        sku,
-        month,
-        callsUsed: retry.calls_used,
-        callsLimit: retry.calls_limit,
-        callsSafety: retry.calls_safety,
-        remaining: Math.max(0, remaining),
-        exhausted: remaining <= 0,
-        usagePercent: Math.round((retry.calls_used / retry.calls_safety) * 100),
-      };
+      return toBudgetStatus(sku, month, retry.calls_used, retry.calls_limit, retry.calls_safety);
     }
 
     throw new Error(`Budget status unavailable for ${toolSlug}/${sku}/${month}`);
   }
 
-  return {
-    sku,
-    month,
-    callsUsed: 0,
-    callsLimit: skuConfig.limit,
-    callsSafety: skuConfig.safety,
-    remaining: skuConfig.safety,
-    exhausted: false,
-    usagePercent: 0,
-  };
+  return toBudgetStatus(sku, month, 0, skuConfig.limit, skuConfig.safety);
 }
 
 /**

@@ -12,6 +12,12 @@ import type { GoogleMapsToolOptions, GridScanResult } from './types.js';
 
 const TOOL_SLUG = 'google-maps';
 
+function formatScanErrors(scanResult: GridScanResult): string[] {
+  return scanResult.errors.map(
+    (e) => `${e.cellId.substring(0, 8)}/${e.category}: ${e.error}`,
+  );
+}
+
 // --- Tool Class ---
 
 export class GoogleMapsTool extends BaseTool {
@@ -47,14 +53,11 @@ export class GoogleMapsTool extends BaseTool {
         `Dry run: ${deltaResult.newCount} new places found. ` +
           `Would fetch details and push to pipeline.`,
       );
-      const scanErrors = scanResult.errors.map(
-        (e) => `${e.cellId.substring(0, 8)}/${e.category}: ${e.error}`,
-      );
       return this.buildReport(
         scanResult.uniqueIdsFound,
         deltaResult.newCount,
         0,
-        scanErrors,
+        formatScanErrors(scanResult),
       );
     }
 
@@ -64,14 +67,11 @@ export class GoogleMapsTool extends BaseTool {
         `Baseline mode: Marking ${deltaResult.newCount} new IDs as known (no details, no cost)`,
       );
       await markAsProcessed(deltaResult.newIds, city, scanResult);
-      const scanErrors = scanResult.errors.map(
-        (e) => `${e.cellId.substring(0, 8)}/${e.category}: ${e.error}`,
-      );
       return this.buildReport(
         scanResult.uniqueIdsFound,
         deltaResult.newCount,
         0,
-        scanErrors,
+        formatScanErrors(scanResult),
       );
     }
 
@@ -79,12 +79,15 @@ export class GoogleMapsTool extends BaseTool {
       `Found ${deltaResult.newCount} new places. Fetching details...`,
     );
 
+    // Build reverse lookup once: placeId → cellId (avoids O(n*m) per-place scan)
+    const cellLookup = buildCellLookup(scanResult.idsByCell);
+
     // Step 4: Fetch details for new places (tiered, budget-aware)
     const { details, tier, queuedIds } = await getTieredDetailsBatch(deltaResult.newIds);
 
     if (queuedIds.length > 0) {
       this.log.info(`${queuedIds.length} IDs queued for next month (all tiers exhausted)`);
-      await this.markQueued(queuedIds, city, scanResult);
+      await this.markQueued(queuedIds, city, cellLookup);
     }
 
     this.log.info(`Fetched ${details.length} details via tier: ${tier}`);
@@ -104,9 +107,6 @@ export class GoogleMapsTool extends BaseTool {
       });
     }
 
-    // Build reverse lookup once: placeId → cellId (avoids O(n*m) per-place scan)
-    const cellLookup = buildCellLookup(scanResult.idsByCell);
-
     // Step 5: Cross-source name matching
     const crossCheckEntries: DeltaMarkEntry[] = details
       .filter((d) => d.businessStatus !== 'CLOSED_PERMANENTLY')
@@ -121,17 +121,13 @@ export class GoogleMapsTool extends BaseTool {
       }));
 
     let trulyNewIds: Set<string>;
-    let crossMatchCount = 0;
 
     try {
       const { trulyNew, crossMatched } = await findNewWithCrossCheck(crossCheckEntries);
       trulyNewIds = new Set(trulyNew.map((e) => e.sourceId));
-      crossMatchCount = crossMatched.length;
 
-      if (crossMatched.length > 0 && !this.dryRun) {
-        await markCrossMatched(crossMatched);
-      }
       if (crossMatched.length > 0) {
+        await markCrossMatched(crossMatched);
         this.log.info(`Cross-source dedup: ${crossMatched.length} matches, ${trulyNew.length} truly new`);
       }
     } catch (err) {
@@ -173,14 +169,11 @@ export class GoogleMapsTool extends BaseTool {
     }
 
     // Step 9: Build report
-    const scanErrors = scanResult.errors.map(
-      (e) => `${e.cellId.substring(0, 8)}/${e.category}: ${e.error}`,
-    );
     return this.buildReport(
       scanResult.uniqueIdsFound,
       deltaResult.newCount,
       pushedCount,
-      scanErrors,
+      formatScanErrors(scanResult),
     );
   }
 
@@ -190,14 +183,14 @@ export class GoogleMapsTool extends BaseTool {
   private async markQueued(
     ids: string[],
     city: CityConfig,
-    scanResult: GridScanResult,
+    cellLookup: Map<string, string>,
   ): Promise<void> {
     const entries = ids.map((id) => ({
       source: 'google_maps' as const,
       sourceId: id,
       city: city.name,
       cityId: city.id,
-      h3Cell: buildCellLookup(scanResult.idsByCell).get(id),
+      h3Cell: cellLookup.get(id),
     }));
     await markKnown(entries);
     this.log.info(`Marked ${ids.length} IDs as queued (pending details)`);
@@ -216,18 +209,23 @@ export class GoogleMapsTool extends BaseTool {
       ['lodging', 'hotels'],
     ];
 
-    let totalUpdated = 0;
-    for (const [searchType, internalCategory] of CATEGORY_PRIORITY) {
-      const ids = scanResult.idSetsByCategory[searchType];
-      if (!ids || ids.length === 0) continue;
+    const results = await Promise.all(
+      CATEGORY_PRIORITY
+        .filter(([searchType]) => {
+          const ids = scanResult.idSetsByCategory[searchType];
+          return ids && ids.length > 0;
+        })
+        .map(async ([searchType, internalCategory]) => {
+          const ids = scanResult.idSetsByCategory[searchType];
+          const updated = await updateCategoryBulk('google_maps', ids, internalCategory, city.id);
+          if (updated > 0) {
+            this.log.info(`Category sync: ${updated} entries → '${internalCategory}'`);
+          }
+          return updated;
+        }),
+    );
 
-      const updated = await updateCategoryBulk('google_maps', ids, internalCategory, city.id);
-      if (updated > 0) {
-        totalUpdated += updated;
-        this.log.info(`Category sync: ${updated} entries → '${internalCategory}'`);
-      }
-    }
-
+    const totalUpdated = results.reduce((sum, n) => sum + n, 0);
     if (totalUpdated > 0) {
       this.log.info(`Category sync complete: ${totalUpdated} entries updated`);
     }
