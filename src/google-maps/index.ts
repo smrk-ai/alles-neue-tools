@@ -58,6 +58,23 @@ export class GoogleMapsTool extends BaseTool {
       );
     }
 
+    // Baseline: only register IDs as known (free), no detail fetching
+    if (this.baselineOnly) {
+      this.log.info(
+        `Baseline mode: Marking ${deltaResult.newCount} new IDs as known (no details, no cost)`,
+      );
+      await markAsProcessed(deltaResult.newIds, city, scanResult);
+      const scanErrors = scanResult.errors.map(
+        (e) => `${e.cellId.substring(0, 8)}/${e.category}: ${e.error}`,
+      );
+      return this.buildReport(
+        scanResult.uniqueIdsFound,
+        deltaResult.newCount,
+        0,
+        scanErrors,
+      );
+    }
+
     this.log.info(
       `Found ${deltaResult.newCount} new places. Fetching details...`,
     );
@@ -135,22 +152,16 @@ export class GoogleMapsTool extends BaseTool {
         }),
       );
 
-    // Step 7: Push to pipeline (unless baseline-only)
+    // Step 7: Push to pipeline
     let pushedCount = 0;
     const failedPlaceIds = new Set<string>();
-    if (!this.baselineOnly) {
-      const results = await pushLeads(leads);
-      pushedCount = results.filter((r) => r.success).length;
-      if (pushedCount < leads.length) {
-        this.log.warn(`${leads.length - pushedCount} pushes failed — will retry next run`);
-        results.forEach((r, i) => {
-          if (!r.success) failedPlaceIds.add(leads[i].source_id!);
-        });
-      }
-    } else {
-      this.log.info(
-        `Baseline mode: Skipping pipeline push for ${leads.length} leads`,
-      );
+    const results = await pushLeads(leads);
+    pushedCount = results.filter((r) => r.success).length;
+    if (pushedCount < leads.length) {
+      this.log.warn(`${leads.length - pushedCount} pushes failed — will retry next run`);
+      results.forEach((r, i) => {
+        if (!r.success) failedPlaceIds.add(leads[i].source_id!);
+      });
     }
 
     // Step 8: Mark new IDs as known (exclude failed pushes so they retry next run)
