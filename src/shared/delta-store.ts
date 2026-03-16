@@ -165,6 +165,7 @@ function buildKnownPlaceRow(e: DeltaMarkEntry): Record<string, unknown> {
   };
   if (e.city) row.city = e.city;
   if (e.category) row.category = e.category;
+  if (e.subType) row.sub_type = e.subType;
   if (e.rawData) row.raw_data = e.rawData;
   return row;
 }

@@ -8,6 +8,7 @@ import { fetchSitemapEntries } from './sitemap-fetcher.js';
 import { findNewEntries, extractSourceId } from './delta-engine.js';
 import { enrichEntries } from './url-enricher.js';
 import { buildLeads } from './lead-builder.js';
+import { isHomestayByName, resolveSubType } from '../shared/homestay-filter.js';
 import type { SitemapMinerOptions, SitemapSourceConfig } from './types.js';
 
 const TOOL_SLUG = 'sitemap-miner';
@@ -92,14 +93,18 @@ export class SitemapMinerTool extends BaseTool {
       // Step 2d: Cross-source name matching
       const cityId = getCityIdBySlug(source.citySlug)!;
       const enrichedByUrl = new Map(enriched.map((en) => [en.url, en]));
-      const markEntries: DeltaMarkEntry[] = deltaResult.newEntries.map((e) => ({
-        source: source.platform,
-        sourceId: extractSourceId(e.loc),
-        city: source.city,
-        cityId,
-        name: enrichedByUrl.get(e.loc)?.name || undefined,
-        category: source.category,
-      }));
+      const markEntries: DeltaMarkEntry[] = deltaResult.newEntries.map((e) => {
+        const name = enrichedByUrl.get(e.loc)?.name || undefined;
+        return {
+          source: source.platform,
+          sourceId: extractSourceId(e.loc),
+          city: source.city,
+          cityId,
+          name,
+          category: source.category,
+          subType: resolveSubType(undefined, undefined, name),
+        };
+      });
 
       let trulyNewEntries: DeltaMarkEntry[];
       let crossMatches: CrossMatchResult[] = [];
@@ -118,13 +123,27 @@ export class SitemapMinerTool extends BaseTool {
 
       totalNew += trulyNewEntries.length;
 
-      // Step 2e: Build leads only for truly new entries
+      // Step 2e: Build leads only for truly new entries (exclude homestays from pipeline)
       const trulyNewSourceIds = new Set(trulyNewEntries.map((e) => e.sourceId));
       const trulyNewEnriched = enriched.filter((e) => {
         const sid = extractSourceId(e.url);
         return trulyNewSourceIds.has(sid);
       });
-      const leads = buildLeads(trulyNewEnriched, source.id);
+
+      const nonHomestays: typeof trulyNewEnriched = [];
+      let homestayCount = 0;
+      for (const e of trulyNewEnriched) {
+        if (isHomestayByName(e.name)) {
+          homestayCount++;
+        } else {
+          nonHomestays.push(e);
+        }
+      }
+      if (homestayCount > 0) {
+        this.log.info(`Skipping ${homestayCount} homestays for ${source.id} (kept in known_places, not pushed)`);
+      }
+
+      const leads = buildLeads(nonHomestays, source.id);
 
       // Step 2f: Push to pipeline (only truly new, not cross-matched)
       let pushResults: Awaited<ReturnType<typeof pushLeads>> = [];
@@ -147,11 +166,15 @@ export class SitemapMinerTool extends BaseTool {
         this.log.info(`[DRY RUN] ${crossMatches.length} cross-source matches (would skip pipeline push)`);
       }
 
-      // Step 2g: Mark entries as known
+      // Step 2g: Mark entries as known (all truly new, including homestays)
       if (!this.dryRun) {
-        // Mark truly new entries that were successfully pushed
-        const entriesToMark = pushResults.length > 0
-          ? trulyNewEntries.filter((_, i) => pushResults[i]?.success)
+        // Collect failed source_ids from push results (index maps to leads, not trulyNewEntries)
+        const failedSourceIds = new Set<string>();
+        pushResults.forEach((r, i) => {
+          if (!r.success && leads[i]?.source_id) failedSourceIds.add(leads[i].source_id!);
+        });
+        const entriesToMark = failedSourceIds.size > 0
+          ? trulyNewEntries.filter((e) => !failedSourceIds.has(e.sourceId))
           : trulyNewEntries;
 
         if (entriesToMark.length > 0) {

@@ -8,6 +8,7 @@ import { detectNew, markAsProcessed } from './delta-detector.js';
 import { getTieredDetailsBatch } from './places-client.js';
 import { transformToLead, buildCellLookup } from './lead-transformer.js';
 import { mapCategory, mapCategoryFromPrimaryType } from './category-mapper.js';
+import { resolveSubType } from '../shared/homestay-filter.js';
 import type { GoogleMapsToolOptions, GridScanResult } from './types.js';
 
 const TOOL_SLUG = 'google-maps';
@@ -92,14 +93,17 @@ export class GoogleMapsTool extends BaseTool {
 
     this.log.info(`Fetched ${details.length} details via tier: ${tier}`);
 
-    // Build name + category + rawData lookups for delta store
+    // Build name + category + subType + rawData lookups for delta store
     const nameById = new Map<string, string>();
     const categoryById = new Map<string, CategoryGuess>();
+    const subTypeById = new Map<string, string>();
     const rawDataById = new Map<string, Record<string, unknown>>();
     for (const d of details) {
       if (d.displayName?.text) nameById.set(d.id, d.displayName.text);
       const cat = mapCategoryFromPrimaryType(d.primaryType) ?? mapCategory(d.types);
       if (cat) categoryById.set(d.id, cat);
+      const st = resolveSubType(d.primaryType, d.types, d.displayName?.text);
+      if (st) subTypeById.set(d.id, st);
       rawDataById.set(d.id, {
         tier,
         fetched_at: new Date().toISOString(),
@@ -118,6 +122,7 @@ export class GoogleMapsTool extends BaseTool {
         h3Cell: cellLookup.get(d.id),
         name: d.displayName?.text,
         category: categoryById.get(d.id),
+        subType: subTypeById.get(d.id),
       }));
 
     let trulyNewIds: Set<string>;
@@ -135,9 +140,19 @@ export class GoogleMapsTool extends BaseTool {
       trulyNewIds = new Set(deltaResult.newIds);
     }
 
-    // Step 6: Filter closed, transform to leads (only truly new)
+    // Step 6: Filter closed + homestays, transform to leads (only truly new)
+    // subTypeById has an entry iff the place is a homestay-type — reuse instead of re-calling filter
+    const homestayCount = [...trulyNewIds].filter((id) => subTypeById.has(id)).length;
+    if (homestayCount > 0) {
+      this.log.info(`Skipping ${homestayCount} homestays (kept in known_places, not pushed to pipeline)`);
+    }
+
     const leads = details
-      .filter((d) => d.businessStatus !== 'CLOSED_PERMANENTLY' && trulyNewIds.has(d.id))
+      .filter((d) =>
+        d.businessStatus !== 'CLOSED_PERMANENTLY' &&
+        trulyNewIds.has(d.id) &&
+        !subTypeById.has(d.id),
+      )
       .map((d) =>
         transformToLead(d, {
           city: city.name,
@@ -165,7 +180,7 @@ export class GoogleMapsTool extends BaseTool {
       ? [...trulyNewIds].filter((id) => !failedPlaceIds.has(id))
       : [...trulyNewIds];
     if (idsToMark.length > 0) {
-      await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById, rawDataById);
+      await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById, rawDataById, subTypeById);
     }
 
     // Step 9: Build report
