@@ -207,6 +207,42 @@ async function getCandidates(
 }
 
 /**
+ * Load same-source match candidates from known_places.
+ * Used to detect duplicate Place IDs that map to the same physical location.
+ */
+async function getIntraSourceCandidates(
+  cityId: string,
+  source: string,
+  category: string | undefined,
+): Promise<MatchCandidate[]> {
+  const db = getSupabaseClient();
+
+  let query = db
+    .from('known_places')
+    .select('id, source, source_id, name, name_normalized, canonical_id')
+    .eq('city_id', cityId)
+    .eq('source', source)
+    .not('name_normalized', 'is', null);
+
+  if (category) query = query.eq('category', category);
+
+  const { data, error } = await query;
+
+  if (error) {
+    log.error(`getIntraSourceCandidates failed`, { error: error.message, cityId, source });
+    throw error;
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.source_id, // use source_id so we can filter out self
+    source: row.source,
+    name: row.name ?? '',
+    nameNormalized: row.name_normalized,
+    canonicalId: row.canonical_id ?? row.id, // fall back to DB id as canonical
+  }));
+}
+
+/**
  * Find truly new entries by combining intra-source delta + cross-source name matching.
  * Returns entries split into "truly new" (push to pipeline) and "cross-matched" (link only).
  */
@@ -220,7 +256,9 @@ export async function findNewWithCrossCheck(
   const newSourceIds = new Set(newIntraSource.map((e) => `${e.source}::${e.sourceId}`));
   const newEntries = entries.filter((e) => newSourceIds.has(`${e.source}::${e.sourceId}`));
 
-  // Step 2: Cross-source name matching for entries that have a name
+  // Step 1b: Intra-source name dedup
+  // Google Maps (and others) can assign multiple IDs to the same physical place.
+  // Match new entries against EXISTING same-source entries by normalized name.
   const withName = newEntries.filter((e) => e.name);
   const withoutName = newEntries.filter((e) => !e.name);
 
@@ -234,20 +272,58 @@ export async function findNewWithCrossCheck(
     const key = `${entry.cityId}::${entry.category ?? ''}::${entry.source}`;
     if (!uniqueKeys.has(key)) uniqueKeys.set(key, { cityId: entry.cityId, category: entry.category, source: entry.source });
   }
-  const candidateCache = new Map<string, MatchCandidate[]>();
+
+  // Fetch both intra-source and cross-source candidates in parallel
+  const intraCandidateCache = new Map<string, MatchCandidate[]>();
+  const crossCandidateCache = new Map<string, MatchCandidate[]>();
   await Promise.all(
-    [...uniqueKeys.entries()].map(async ([key, { cityId, category, source }]) => {
-      const candidates = await getCandidates(cityId, category, source);
-      candidateCache.set(key, candidates);
-    }),
+    [...uniqueKeys.entries()].flatMap(([key, { cityId, category, source }]) => [
+      getIntraSourceCandidates(cityId, source, category).then((c) => intraCandidateCache.set(key, c)),
+      getCandidates(cityId, category, source).then((c) => crossCandidateCache.set(key, c)),
+    ]),
   );
 
-  const crossMatched: CrossMatchResult[] = [];
-  const trulyNew: DeltaMarkEntry[] = [...withoutName];
+  const intraMatched: CrossMatchResult[] = [];
+  const afterIntraDedup: DeltaMarkEntry[] = [];
 
   for (const entry of withName) {
     const cacheKey = `${entry.cityId}::${entry.category ?? ''}::${entry.source}`;
-    const candidates = candidateCache.get(cacheKey)!;
+    const candidates = (intraCandidateCache.get(cacheKey) ?? [])
+      .filter((c) => c.id !== entry.sourceId); // exclude self
+    const match = findBestMatch(entry.name!, candidates);
+
+    if (match) {
+      intraMatched.push({
+        entry,
+        matchedWith: {
+          id: match.candidateId,
+          canonicalId: match.canonicalId,
+          name: match.candidateName,
+          source: match.candidateSource,
+          score: match.score,
+        },
+      });
+    } else {
+      afterIntraDedup.push(entry);
+    }
+  }
+
+  if (intraMatched.length > 0) {
+    log.info(`Intra-source dedup: ${intraMatched.length} name matches (duplicate Place IDs for same location)`);
+    for (const m of intraMatched) {
+      log.info(
+        `  ↳ "${m.entry.name}" (${m.entry.sourceId.substring(0, 12)}) = existing "${m.matchedWith.name}" (score: ${m.matchedWith.score.toFixed(3)})`,
+      );
+    }
+  }
+
+  // Step 2: Cross-source name matching (only for entries that survived intra-source dedup)
+  const crossMatched: CrossMatchResult[] = [];
+  const trulyNew: DeltaMarkEntry[] = [...withoutName];
+
+  for (const entry of afterIntraDedup) {
+    const cacheKey = `${entry.cityId}::${entry.category ?? ''}::${entry.source}`;
+    const candidates = crossCandidateCache.get(cacheKey)!;
     const match = findBestMatch(entry.name!, candidates);
 
     if (match) {
@@ -266,6 +342,9 @@ export async function findNewWithCrossCheck(
     }
   }
 
+  // Combine intra + cross matched for unified handling
+  const allMatched = [...intraMatched, ...crossMatched];
+
   if (crossMatched.length > 0) {
     log.info(`Cross-source: ${crossMatched.length} matches found, ${trulyNew.length} truly new`);
     for (const m of crossMatched) {
@@ -275,7 +354,7 @@ export async function findNewWithCrossCheck(
     }
   }
 
-  return { trulyNew, crossMatched };
+  return { trulyNew, crossMatched: allMatched };
 }
 
 /**
