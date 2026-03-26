@@ -4,6 +4,7 @@ import { createLogger } from '../shared/logger.js';
 import { sleep } from '../shared/utils.js';
 import type { CityConfig } from '../shared/types.js';
 import { searchTextIDs, withRetry } from './places-client.js';
+import { incrementBudget } from '../shared/budget-tracker.js';
 import type { GridScanResult, ScanError } from './types.js';
 
 const log = createLogger('google-maps');
@@ -51,6 +52,7 @@ async function scanCellCategory(
     }),
   );
 
+  await incrementBudget('google-maps', 'text_search_ids_only');
   await sleep(DELAY_BETWEEN_CATEGORIES_MS);
 
   if (ids.length < API_RESULT_CAP) {
