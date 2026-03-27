@@ -100,7 +100,7 @@ export async function updateToolRun(
 
 // --- Base Tool ---
 
-const MAX_EXECUTION_MS = 15 * 60 * 1000; // 15 minutes hard timeout
+const MAX_EXECUTION_MS = 30 * 60 * 1000; // 30 minutes hard timeout
 
 export abstract class BaseTool {
   protected toolSlug: string;
