@@ -111,10 +111,9 @@ async function main() {
   // Load cities from Supabase before resolving city slugs
   await loadCities();
 
-  // Fetch run_config from DB and merge with CLI args
-  // Priority: explicit CLI flags (--dry-run, --baseline-only) > DB run_config > defaults
-  // For city: if CLI passes "all" (entrypoint.sh default), DB config has priority
-  const dbConfig = await fetchRunConfig(opts.slug);
+  // Per-city configs use suffixed slugs (e.g. "google-maps-hoi-an"); "all" uses the base slug
+  const configSlug = opts.city !== 'all' ? `${opts.slug}-${opts.city}` : opts.slug;
+  const dbConfig = await fetchRunConfig(configSlug);
 
   if (dbConfig.isActive === false) {
     console.log(`[run-tool] Tool "${opts.slug}" is deactivated (is_active=false). Exiting.`);
