@@ -20,6 +20,8 @@ const BASIC_FIELDS = [
   'googleMapsUri',
   'primaryType',
   'primaryTypeDisplayName',
+  'rating',
+  'userRatingCount',
 ].join(',');
 
 const ESSENTIALS_FIELDS = [

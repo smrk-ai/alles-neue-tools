@@ -38,6 +38,8 @@ export function transformToLead(
       google_primary_type: place.primaryType,
       google_primary_type_display: place.primaryTypeDisplayName?.text,
       google_business_status: place.businessStatus,
+      google_rating: place.rating,
+      google_rating_count: place.userRatingCount,
       location: place.location,
       display_name_language: place.displayName?.languageCode,
       discovery: {

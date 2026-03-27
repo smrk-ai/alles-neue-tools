@@ -23,6 +23,8 @@ export interface PlaceBasicDetails {
     text: string;
     languageCode: string;
   };
+  rating?: number;
+  userRatingCount?: number;
 }
 
 // --- Grid Scanner Types ---
