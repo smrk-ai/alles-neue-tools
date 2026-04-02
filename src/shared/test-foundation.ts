@@ -1,3 +1,4 @@
+import { errorToString } from './utils.js';
 import { config } from './config.js';
 import { createLogger } from './logger.js';
 import { pushLead } from './pipeline-client.js';
@@ -101,7 +102,7 @@ async function main() {
     await db.from('known_places').delete().eq('source', 'test');
     check('Test entries cleaned up', true);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorToString(err);
     check('Delta Store', false, msg);
     console.log('  ⚠️  Make sure known_places table exists in Supabase (run sql/001_known_places.sql)');
   }

@@ -1,3 +1,4 @@
+import { errorToString } from './utils.js';
 import { config } from './config.js';
 import { createLogger, type Logger } from './logger.js';
 import { loadCities } from './city-config.js';
@@ -69,7 +70,7 @@ export async function createToolRun(toolSlug: string): Promise<string | null> {
     const data = await res.json() as { run_id: string };
     return data.run_id;
   } catch (err) {
-    toolRunLog.error(`Failed to create tool run`, { error: err instanceof Error ? err.message : String(err) });
+    toolRunLog.error(`Failed to create tool run`, { error: errorToString(err) });
     return null;
   }
 }
@@ -94,7 +95,7 @@ export async function updateToolRun(
       body: JSON.stringify({ run_id: runId, ...update }),
     });
   } catch (err) {
-    toolRunLog.error(`Failed to update tool run`, { error: err instanceof Error ? err.message : String(err) });
+    toolRunLog.error(`Failed to update tool run`, { error: errorToString(err) });
   }
 }
 
@@ -234,7 +235,7 @@ export abstract class BaseTool {
 
       return report;
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorMsg = errorToString(err);
       this.log.error(`Run failed: ${errorMsg}`);
 
       if (runId) {

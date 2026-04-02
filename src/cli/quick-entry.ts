@@ -1,3 +1,4 @@
+import { errorToString } from '../shared/utils.js';
 import { pushLead } from '../shared/pipeline-client.js';
 import { createLogger } from '../shared/logger.js';
 import type { PipelineLeadInput, CategoryGuess, LeadSource } from '../shared/types.js';
@@ -140,6 +141,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  log.error(`Fatal error: ${err instanceof Error ? err.message : String(err)}`);
+  log.error(`Fatal error: ${errorToString(err)}`);
   process.exit(1);
 });

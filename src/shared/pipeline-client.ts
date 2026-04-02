@@ -1,3 +1,4 @@
+import { errorToString } from './utils.js';
 import { config } from './config.js';
 import { createLogger } from './logger.js';
 import type { PipelineLeadInput, PipelineResult } from './types.js';
@@ -19,7 +20,7 @@ async function postWithRetry(
       });
     } catch (err) {
       if (attempt < retries) {
-        log.warn(`Network error, retrying (${attempt + 1}/${retries})...`, { error: String(err) });
+        log.warn(`Network error, retrying (${attempt + 1}/${retries})...`, { error: errorToString(err) });
         await new Promise((r) => setTimeout(r, 1000));
       } else {
         throw err;
@@ -64,7 +65,7 @@ export async function pushLead(
     log.error(`Push failed (${res.status}): ${errorBody}`);
     return { success: false, error: `HTTP ${res.status}: ${errorBody}` };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorToString(err);
     log.error(`Push failed: ${msg}`);
     return { success: false, error: msg };
   }

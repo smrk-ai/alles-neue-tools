@@ -10,6 +10,7 @@
 //   npm run run-all -- --dry-run
 
 import 'dotenv/config';
+import { errorToString } from '../shared/utils.js';
 import { getSupabaseClient } from '../shared/supabase-client.js';
 import { getCityBySlug, getAllCities, loadCities } from '../shared/city-config.js';
 import { createLogger } from '../shared/logger.js';
@@ -188,7 +189,7 @@ async function main() {
 
       console.log(`  ✓ ${aggregated.status} — found: ${aggregated.leadsFound}, new: ${aggregated.leadsNew}, pushed: ${aggregated.leadsPushed} (${(aggregated.durationMs / 1000).toFixed(1)}s)`);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorToString(err);
       console.error(`  ✗ FATAL: ${msg}`);
       reports.push({
         slug: toolConfig.slug,

@@ -1,3 +1,4 @@
+import { errorToString } from '../shared/utils.js';
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
@@ -136,7 +137,7 @@ export class GoogleMapsTool extends BaseTool {
         this.log.info(`Cross-source dedup: ${crossMatched.length} matches, ${trulyNew.length} truly new`);
       }
     } catch (err) {
-      this.log.warn(`Cross-source check failed, proceeding without: ${err instanceof Error ? err.message : String(err)}`);
+      this.log.warn(`Cross-source check failed, proceeding without: ${errorToString(err)}`);
       trulyNewIds = new Set(deltaResult.newIds);
     }
 

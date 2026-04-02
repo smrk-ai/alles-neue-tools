@@ -1,3 +1,4 @@
+import { errorToString } from '../shared/utils.js';
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug, getCityIdBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
@@ -58,7 +59,7 @@ export class SitemapMinerTool extends BaseTool {
       try {
         entries = await fetchSitemapEntries(source);
       } catch (err) {
-        const msg = `Fetch error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
+        const msg = `Fetch error for ${source.id}: ${errorToString(err)}`;
         this.log.error(msg);
         errors.push(msg);
         continue;
@@ -76,7 +77,7 @@ export class SitemapMinerTool extends BaseTool {
       try {
         deltaResult = await findNewEntries(entries, source.platform);
       } catch (err) {
-        const msg = `Delta store error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
+        const msg = `Delta store error for ${source.id}: ${errorToString(err)}`;
         this.log.error(msg);
         errors.push(msg);
         continue;
@@ -115,7 +116,7 @@ export class SitemapMinerTool extends BaseTool {
         crossMatches = crossResult.crossMatched;
         totalCrossMatched += crossMatches.length;
       } catch (err) {
-        const msg = `Cross-source check error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
+        const msg = `Cross-source check error for ${source.id}: ${errorToString(err)}`;
         this.log.warn(msg);
         // Fallback: treat all as truly new (graceful degradation)
         trulyNewEntries = markEntries;
@@ -181,7 +182,7 @@ export class SitemapMinerTool extends BaseTool {
           try {
             await markKnown(entriesToMark);
           } catch (err) {
-            const msg = `markKnown error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
+            const msg = `markKnown error for ${source.id}: ${errorToString(err)}`;
             this.log.error(msg);
             errors.push(msg);
           }
@@ -192,7 +193,7 @@ export class SitemapMinerTool extends BaseTool {
           try {
             await markCrossMatched(crossMatches);
           } catch (err) {
-            const msg = `markCrossMatched error for ${source.id}: ${err instanceof Error ? err.message : String(err)}`;
+            const msg = `markCrossMatched error for ${source.id}: ${errorToString(err)}`;
             this.log.error(msg);
             errors.push(msg);
           }

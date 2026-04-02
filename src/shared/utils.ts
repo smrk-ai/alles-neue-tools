@@ -5,6 +5,18 @@
 import type { CategoryGuess } from './types.js';
 
 /**
+ * Extract a human-readable message from any thrown value.
+ * Handles standard Errors, Supabase PostgrestError objects, and primitives.
+ */
+export function errorToString(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    return String((err as { message: string }).message);
+  }
+  return String(err);
+}
+
+/**
  * Sleep for a given number of milliseconds.
  */
 export const sleep = (ms: number): Promise<void> =>

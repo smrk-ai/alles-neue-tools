@@ -1,3 +1,4 @@
+import { errorToString } from '../shared/utils.js';
 import { gunzipSync } from 'node:zlib';
 import { XMLParser } from 'fast-xml-parser';
 import { createLogger } from '../shared/logger.js';
@@ -78,7 +79,7 @@ async function fetchXml(url: string): Promise<string | null> {
     fetchCache.set(url, xml);
     return xml;
   } catch (err) {
-    log.warn(`Fetch error: ${url}`, { error: String(err) });
+    log.warn(`Fetch error: ${url}`, { error: errorToString(err) });
     return null;
   }
 }
@@ -94,7 +95,7 @@ async function fetchSitemapIndex(indexUrl: string): Promise<string[]> {
   try {
     parsed = indexParser.parse(xml) as Record<string, unknown>;
   } catch (err) {
-    log.error(`Failed to parse sitemap index XML`, { error: String(err) });
+    log.error(`Failed to parse sitemap index XML`, { error: errorToString(err) });
     return [];
   }
 
@@ -128,7 +129,7 @@ async function fetchSubSitemap(url: string, urlPattern: RegExp): Promise<Sitemap
   try {
     parsed = urlsetParser.parse(xml) as Record<string, unknown>;
   } catch (err) {
-    log.warn(`Failed to parse sub-sitemap XML: ${url}`, { error: String(err) });
+    log.warn(`Failed to parse sub-sitemap XML: ${url}`, { error: errorToString(err) });
     return [];
   }
 

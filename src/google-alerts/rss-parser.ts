@@ -1,3 +1,4 @@
+import { errorToString } from '../shared/utils.js';
 import { XMLParser } from 'fast-xml-parser';
 import { createLogger } from '../shared/logger.js';
 import type { AlertFeedConfig, ParsedFeedItem } from './types.js';
@@ -96,7 +97,7 @@ export async function parseFeed(feed: AlertFeedConfig): Promise<ParsedFeedItem[]
     }
     rawXml = await res.text();
   } catch (err) {
-    log.warn(`Feed fetch error: ${feed.label}`, { error: String(err) });
+    log.warn(`Feed fetch error: ${feed.label}`, { error: errorToString(err) });
     return [];
   }
 
@@ -104,7 +105,7 @@ export async function parseFeed(feed: AlertFeedConfig): Promise<ParsedFeedItem[]
   try {
     parsed = parser.parse(rawXml) as Record<string, unknown>;
   } catch (err) {
-    log.warn(`Feed parse error: ${feed.label}`, { error: String(err) });
+    log.warn(`Feed parse error: ${feed.label}`, { error: errorToString(err) });
     return [];
   }
 

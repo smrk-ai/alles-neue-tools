@@ -1,3 +1,4 @@
+import { errorToString } from '../shared/utils.js';
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug, getCityIdBySlug, ALL_CITIES_CONFIG } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
@@ -47,7 +48,7 @@ export class ChangeDetectionTool extends BaseTool {
       allWatchStates = await listWatches();
       this.log.info(`Got ${Object.keys(allWatchStates).length} watches from changedetection.io`);
     } catch (err) {
-      const msg = `Failed to connect to changedetection.io: ${err instanceof Error ? err.message : String(err)}`;
+      const msg = `Failed to connect to changedetection.io: ${errorToString(err)}`;
       this.log.error(msg);
       errors.push(msg);
       return this.buildReport(0, 0, 0, errors);
@@ -87,7 +88,7 @@ export class ChangeDetectionTool extends BaseTool {
       try {
         snapshotText = await getSnapshot(watchConfig.uuid, 'latest');
       } catch (err) {
-        const msg = `Failed to get snapshot for ${watchConfig.id}: ${err instanceof Error ? err.message : String(err)}`;
+        const msg = `Failed to get snapshot for ${watchConfig.id}: ${errorToString(err)}`;
         this.log.error(msg);
         errors.push(msg);
         continue;
@@ -115,7 +116,7 @@ export class ChangeDetectionTool extends BaseTool {
       try {
         newEntries = await findNew(deltaEntries);
       } catch (err) {
-        const msg = `Delta store error for ${watchConfig.id}: ${err instanceof Error ? err.message : String(err)}`;
+        const msg = `Delta store error for ${watchConfig.id}: ${errorToString(err)}`;
         this.log.error(msg);
         errors.push(msg);
         continue;
@@ -159,7 +160,7 @@ export class ChangeDetectionTool extends BaseTool {
         try {
           await markKnown(markEntries);
         } catch (err) {
-          const msg = `markKnown error for ${watchConfig.id}: ${err instanceof Error ? err.message : String(err)}`;
+          const msg = `markKnown error for ${watchConfig.id}: ${errorToString(err)}`;
           this.log.error(msg);
           errors.push(msg);
         }

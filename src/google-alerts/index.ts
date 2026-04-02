@@ -1,3 +1,4 @@
+import { errorToString } from '../shared/utils.js';
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug, getCityIdBySlug, ALL_CITIES_CONFIG } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
@@ -52,7 +53,7 @@ export class GoogleAlertsTool extends BaseTool {
     try {
       newEntries = await findNew(deltaEntries);
     } catch (err) {
-      const msg = `Delta store error: ${err instanceof Error ? err.message : String(err)}`;
+      const msg = `Delta store error: ${errorToString(err)}`;
       this.log.error(msg);
       errors.push(msg);
       return this.buildReport(allItems.length, 0, 0, errors);
@@ -123,7 +124,7 @@ export class GoogleAlertsTool extends BaseTool {
         try {
           await markKnown(markEntries);
         } catch (err) {
-          const msg = `markKnown error: ${err instanceof Error ? err.message : String(err)}`;
+          const msg = `markKnown error: ${errorToString(err)}`;
           this.log.error(msg);
           errors.push(msg);
         }

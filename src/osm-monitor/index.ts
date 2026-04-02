@@ -2,6 +2,7 @@
 // OSM Changeset Monitor – Orchestrator + CLI
 // ===========================================
 
+import { errorToString } from '../shared/utils.js';
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
@@ -50,7 +51,7 @@ export class OsmMonitorTool extends BaseTool {
     try {
       elements = await queryOverpass(query);
     } catch (err) {
-      const msg = `Overpass query failed: ${err instanceof Error ? err.message : String(err)}`;
+      const msg = `Overpass query failed: ${errorToString(err)}`;
       this.log.error(msg);
       errors.push(msg);
       return this.buildReport(0, 0, 0, errors);
@@ -72,7 +73,7 @@ export class OsmMonitorTool extends BaseTool {
     try {
       newEntries = await findNew(deltaEntries);
     } catch (err) {
-      const msg = `Delta store error: ${err instanceof Error ? err.message : String(err)}`;
+      const msg = `Delta store error: ${errorToString(err)}`;
       this.log.error(msg);
       errors.push(msg);
       return this.buildReport(elements.length, 0, 0, errors);
@@ -132,7 +133,7 @@ export class OsmMonitorTool extends BaseTool {
         try {
           await markKnown(markEntries);
         } catch (err) {
-          const msg = `markKnown error: ${err instanceof Error ? err.message : String(err)}`;
+          const msg = `markKnown error: ${errorToString(err)}`;
           this.log.error(msg);
           errors.push(msg);
         }
