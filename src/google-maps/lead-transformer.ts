@@ -40,6 +40,7 @@ export function transformToLead(
       google_business_status: place.businessStatus,
       google_rating: place.rating,
       google_rating_count: place.userRatingCount,
+      photo_count: place.photos?.length ?? 0,
       location: place.location,
       display_name_language: place.displayName?.languageCode,
       discovery: {

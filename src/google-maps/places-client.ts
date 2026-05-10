@@ -22,6 +22,7 @@ const BASIC_FIELDS = [
   'primaryTypeDisplayName',
   'rating',
   'userRatingCount',
+  'photos.name',
 ].join(',');
 
 const ESSENTIALS_FIELDS = [

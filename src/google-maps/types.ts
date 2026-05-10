@@ -25,6 +25,11 @@ export interface PlaceBasicDetails {
   };
   rating?: number;
   userRatingCount?: number;
+  photos?: Array<{
+    name: string;
+    widthPx?: number;
+    heightPx?: number;
+  }>;
 }
 
 // --- Grid Scanner Types ---
