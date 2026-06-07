@@ -133,6 +133,7 @@ export interface CrossMatchResult {
 
 export type ApiSku =
   | 'text_search_ids_only'
+  | 'place_details_enterprise'
   | 'place_details_pro'
   | 'place_details_essentials';
 
@@ -147,4 +148,4 @@ export interface BudgetStatus {
   usagePercent: number;
 }
 
-export type DetailTier = 'place_details_pro' | 'place_details_essentials' | 'queued';
+export type DetailTier = 'place_details_enterprise' | 'place_details_pro' | 'place_details_essentials' | 'queued';

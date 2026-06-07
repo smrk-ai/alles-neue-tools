@@ -10,7 +10,9 @@ const log = createLogger('google-maps');
 
 const PLACES_API_BASE = 'https://places.googleapis.com/v1';
 
-const BASIC_FIELDS = [
+// Enterprise SKU: includes rating + userRatingCount (Enterprise-tier fields).
+// Used until the 1k/month free Enterprise cap is hit.
+const ENTERPRISE_FIELDS = [
   'id',
   'displayName',
   'formattedAddress',
@@ -25,6 +27,22 @@ const BASIC_FIELDS = [
   'photos.name',
 ].join(',');
 
+// Pro SKU: same as Enterprise but WITHOUT rating/userRatingCount → cheaper Pro tier
+// (5k/month free). Fallback once the Enterprise cap is exhausted: keeps name/category/
+// location, just no rating-count.
+const PRO_FIELDS = [
+  'id',
+  'displayName',
+  'formattedAddress',
+  'location',
+  'types',
+  'businessStatus',
+  'googleMapsUri',
+  'primaryType',
+  'primaryTypeDisplayName',
+  'photos.name',
+].join(',');
+
 const ESSENTIALS_FIELDS = [
   'id',
   'formattedAddress',
@@ -32,6 +50,13 @@ const ESSENTIALS_FIELDS = [
   'types',
   'addressComponents',
 ].join(',');
+
+// Map a budget tier to its field mask (which in turn determines the billed SKU).
+function fieldMaskForTier(tier: DetailTier): string {
+  if (tier === 'place_details_enterprise') return ENTERPRISE_FIELDS;
+  if (tier === 'place_details_essentials') return ESSENTIALS_FIELDS;
+  return PRO_FIELDS;
+}
 
 const RETRY_ATTEMPTS = 2;
 const RETRY_DELAY_MS = 2000;
@@ -199,7 +224,7 @@ export async function getTieredDetailsBatch(
     }
 
     try {
-      const fieldMask = currentTier === 'place_details_essentials' ? ESSENTIALS_FIELDS : BASIC_FIELDS;
+      const fieldMask = fieldMaskForTier(currentTier);
       const detail = await withRetry(() => getPlaceDetails(placeId, fieldMask));
       details.push(detail);
 

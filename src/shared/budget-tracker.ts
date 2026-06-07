@@ -4,18 +4,25 @@ import type { ApiSku, BudgetStatus, DetailTier } from './types.js';
 
 const log = createLogger('budget-tracker');
 
-// SKU config: limits and costs per call (above free tier)
+// SKU config: monthly free caps (per Google's March-2025 model: each SKU has its
+// own free monthly quota — Essentials 10k, Pro 5k, Enterprise 1k) and cost per call
+// ABOVE that free cap. The field mask of a request determines its SKU — Google bills
+// at the highest SKU applicable, so rating/userRatingCount push a call to Enterprise.
 const SKU_CONFIG: Record<ApiSku, { limit: number; safety: number; costPerCall: number }> = {
   text_search_ids_only:     { limit: 999999, safety: 999999, costPerCall: 0 },
+  place_details_enterprise: { limit: 1000,   safety: 900,    costPerCall: 0.025 },
   place_details_pro:        { limit: 5000,   safety: 4500,   costPerCall: 0.017 },
   place_details_essentials: { limit: 10000,  safety: 9000,   costPerCall: 0.007 },
 };
 
-// Tier order for detail fetching (best data first)
-// These values are the intersection of ApiSku and DetailTier (excluding 'queued')
+// Tier order for detail fetching (best data first):
+// 1. Enterprise (incl. rating + userRatingCount) until the 1k free cap is hit,
+// 2. then fall back to Pro (name/category/location, no rating-count) — free up to 5k,
+// 3. then 'queued' (call is skipped until next month).
+// These values are the intersection of ApiSku and DetailTier (excluding 'queued').
 const DETAIL_TIER_ORDER = [
+  'place_details_enterprise',
   'place_details_pro',
-  'place_details_essentials',
 ] as const satisfies readonly (ApiSku & DetailTier)[];
 
 function getCurrentMonth(): string {
