@@ -31,11 +31,16 @@ export async function findNew(entries: DeltaEntry[]): Promise<DeltaEntry[]> {
       const batch = sourceEntries.slice(i, i + BATCH_SIZE);
       const sourceIds = batch.map((e) => e.sourceId);
 
+      // Only treat a place as "known" if it has been fully fetched (raw_data set).
+      // Entries marked via markQueued (budget exhausted) have raw_data NULL — those
+      // must stay "new" so a later run with free budget actually fetches them.
+      // Without this, budget-queued places get silently skipped forever.
       const { data, error } = await db
         .from('known_places')
         .select('source, source_id')
         .eq('source', source)
-        .in('source_id', sourceIds);
+        .in('source_id', sourceIds)
+        .not('raw_data', 'is', null);
 
       if (error) {
         log.error(`findNew query failed`, { error: error.message, source, batch: i });
