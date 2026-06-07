@@ -101,7 +101,13 @@ export async function updateToolRun(
 
 // --- Base Tool ---
 
-const MAX_EXECUTION_MS = 30 * 60 * 1000; // 30 minutes hard timeout
+// Hard timeout to prevent zombie runs. Configurable via TOOL_MAX_EXECUTION_MIN
+// (default 30) so a one-off large initial scan can run longer locally without
+// touching the Railway cron default.
+const MAX_EXECUTION_MS = (() => {
+  const min = Number(process.env.TOOL_MAX_EXECUTION_MIN);
+  return Number.isFinite(min) && min > 0 ? min * 60 * 1000 : 30 * 60 * 1000;
+})();
 
 export abstract class BaseTool {
   protected toolSlug: string;

@@ -78,23 +78,84 @@ export class GoogleMapsTool extends BaseTool {
     }
 
     this.log.info(
-      `Found ${deltaResult.newCount} new places. Fetching details...`,
+      `Found ${deltaResult.newCount} new places. Fetching details in chunks...`,
     );
 
     // Build reverse lookup once: placeId → cellId (avoids O(n*m) per-place scan)
     const cellLookup = buildCellLookup(scanResult.idsByCell);
 
-    // Step 4: Fetch details for new places (tiered, budget-aware)
-    const { details, tier, queuedIds } = await getTieredDetailsBatch(deltaResult.newIds);
+    // Step 4-8: process new IDs in chunks. Each chunk is fully persisted (pushed +
+    // marked known) before the next starts, so a hard timeout mid-run never loses
+    // completed work — the next run skips already-known IDs via delta detection and
+    // resumes where this one stopped.
+    const CHUNK_SIZE = 100;
+    const newIds = deltaResult.newIds;
+    const chunkTotal = Math.ceil(newIds.length / CHUNK_SIZE);
+    let totalPushed = 0;
+
+    for (let offset = 0; offset < newIds.length; offset += CHUNK_SIZE) {
+      const chunk = newIds.slice(offset, offset + CHUNK_SIZE);
+      const chunkNum = Math.floor(offset / CHUNK_SIZE) + 1;
+
+      const { pushed, budgetExhausted } = await this.processChunk(
+        chunk,
+        scanResult,
+        deltaResult.scanDate,
+        cellLookup,
+        city,
+      );
+      totalPushed += pushed;
+      this.log.info(`Chunk ${chunkNum}/${chunkTotal}: +${pushed} pushed (total ${totalPushed})`);
+
+      if (budgetExhausted) {
+        // All detail tiers exhausted — queue the remaining IDs for next month and stop.
+        const remaining = newIds.slice(offset + CHUNK_SIZE);
+        if (remaining.length > 0) {
+          await this.markQueued(remaining, city, cellLookup);
+          this.log.info(`Budget exhausted — queued ${remaining.length} remaining IDs for next month`);
+        }
+        break;
+      }
+    }
+
+    // Step 9: Build report
+    return this.buildReport(
+      scanResult.uniqueIdsFound,
+      deltaResult.newCount,
+      totalPushed,
+      formatScanErrors(scanResult),
+    );
+  }
+
+  /**
+   * Process one chunk of new place IDs end-to-end: fetch details → cross-source
+   * dedup → filter → push leads → mark as known. Persisting per chunk makes the
+   * run resumable — a hard timeout only loses the in-flight chunk, not prior ones.
+   * Returns the push count and whether all budget tiers are exhausted (caller stops).
+   */
+  private async processChunk(
+    chunk: string[],
+    scanResult: GridScanResult,
+    scanDate: string,
+    cellLookup: Map<string, string>,
+    city: CityConfig,
+  ): Promise<{ pushed: number; budgetExhausted: boolean }> {
+    // Step 4: Fetch details for this chunk (tiered, budget-aware)
+    const { details, tier, queuedIds } = await getTieredDetailsBatch(chunk);
 
     if (queuedIds.length > 0) {
-      this.log.info(`${queuedIds.length} IDs queued for next month (all tiers exhausted)`);
       await this.markQueued(queuedIds, city, cellLookup);
     }
 
-    this.log.info(`Fetched ${details.length} details via tier: ${tier}`);
+    // tier 'queued' means all budget tiers are exhausted → signal caller to stop
+    if (tier === 'queued') {
+      return { pushed: 0, budgetExhausted: true };
+    }
+    if (details.length === 0) {
+      return { pushed: 0, budgetExhausted: false };
+    }
 
-    // Build name + category + subType + rawData lookups for delta store
+    // Build name + category + subType + rawData lookups for the delta store
     const nameById = new Map<string, string>();
     const categoryById = new Map<string, CategoryGuess>();
     const subTypeById = new Map<string, string>();
@@ -127,7 +188,6 @@ export class GoogleMapsTool extends BaseTool {
       }));
 
     let trulyNewIds: Set<string>;
-
     try {
       const { trulyNew, crossMatched } = await findNewWithCrossCheck(crossCheckEntries);
       trulyNewIds = new Set(trulyNew.map((e) => e.sourceId));
@@ -138,7 +198,7 @@ export class GoogleMapsTool extends BaseTool {
       }
     } catch (err) {
       this.log.warn(`Cross-source check failed, proceeding without: ${errorToString(err)}`);
-      trulyNewIds = new Set(deltaResult.newIds);
+      trulyNewIds = new Set(chunk);
     }
 
     // Step 6: Filter closed + homestays, transform to leads (only truly new)
@@ -159,7 +219,7 @@ export class GoogleMapsTool extends BaseTool {
           city: city.name,
           cityId: city.id,
           h3Cell: cellLookup.get(d.id),
-          scanDate: deltaResult.scanDate,
+          scanDate,
           isBaseline: this.baselineOnly,
         }),
       );
@@ -184,13 +244,7 @@ export class GoogleMapsTool extends BaseTool {
       await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById, rawDataById, subTypeById);
     }
 
-    // Step 9: Build report
-    return this.buildReport(
-      scanResult.uniqueIdsFound,
-      deltaResult.newCount,
-      pushedCount,
-      formatScanErrors(scanResult),
-    );
+    return { pushed: pushedCount, budgetExhausted: false };
   }
 
   /**
