@@ -20,6 +20,8 @@ export const config = {
   toolRuns: {
     apiUrl: requireEnv('TOOL_RUNS_API_URL'),
     apiKey: requireEnv('TOOL_API_KEY'),
+    // Minutes; parsed/validated where used (tool-runner). Empty → default applies.
+    maxExecutionMin: optionalEnv('TOOL_MAX_EXECUTION_MIN'),
   },
   supabase: {
     url: requireEnv('SUPABASE_URL'),

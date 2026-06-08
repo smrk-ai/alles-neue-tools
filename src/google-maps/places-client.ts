@@ -10,27 +10,8 @@ const log = createLogger('google-maps');
 
 const PLACES_API_BASE = 'https://places.googleapis.com/v1';
 
-// Enterprise SKU: includes rating + userRatingCount (Enterprise-tier fields).
-// Used until the 1k/month free Enterprise cap is hit.
-const ENTERPRISE_FIELDS = [
-  'id',
-  'displayName',
-  'formattedAddress',
-  'location',
-  'types',
-  'businessStatus',
-  'googleMapsUri',
-  'primaryType',
-  'primaryTypeDisplayName',
-  'rating',
-  'userRatingCount',
-  'photos.name',
-].join(',');
-
-// Pro SKU: same as Enterprise but WITHOUT rating/userRatingCount → cheaper Pro tier
-// (5k/month free). Fallback once the Enterprise cap is exhausted: keeps name/category/
-// location, just no rating-count.
-const PRO_FIELDS = [
+// Pro SKU base fields (5k/month free): name/category/location, no rating-count.
+const PRO_FIELD_LIST = [
   'id',
   'displayName',
   'formattedAddress',
@@ -41,21 +22,17 @@ const PRO_FIELDS = [
   'primaryType',
   'primaryTypeDisplayName',
   'photos.name',
-].join(',');
+] as const;
 
-const ESSENTIALS_FIELDS = [
-  'id',
-  'formattedAddress',
-  'location',
-  'types',
-  'addressComponents',
-].join(',');
+const PRO_FIELDS = PRO_FIELD_LIST.join(',');
+
+// Enterprise SKU = Pro base + rating/userRatingCount (these two fields are exactly
+// what pushes the call to the Enterprise tier). Used until the 1k/month free cap is hit.
+const ENTERPRISE_FIELDS = [...PRO_FIELD_LIST, 'rating', 'userRatingCount'].join(',');
 
 // Map a budget tier to its field mask (which in turn determines the billed SKU).
 function fieldMaskForTier(tier: DetailTier): string {
-  if (tier === 'place_details_enterprise') return ENTERPRISE_FIELDS;
-  if (tier === 'place_details_essentials') return ESSENTIALS_FIELDS;
-  return PRO_FIELDS;
+  return tier === 'place_details_enterprise' ? ENTERPRISE_FIELDS : PRO_FIELDS;
 }
 
 const RETRY_ATTEMPTS = 2;

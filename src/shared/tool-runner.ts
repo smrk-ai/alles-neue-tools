@@ -105,7 +105,7 @@ export async function updateToolRun(
 // (default 30) so a one-off large initial scan can run longer locally without
 // touching the Railway cron default.
 const MAX_EXECUTION_MS = (() => {
-  const min = Number(process.env.TOOL_MAX_EXECUTION_MIN);
+  const min = Number(config.toolRuns.maxExecutionMin);
   return Number.isFinite(min) && min > 0 ? min * 60 * 1000 : 30 * 60 * 1000;
 })();
 
