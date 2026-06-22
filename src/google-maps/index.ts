@@ -27,7 +27,7 @@ export class GoogleMapsTool extends BaseTool {
 
   constructor(options: GoogleMapsToolOptions) {
     super({
-      toolSlug: TOOL_SLUG,
+      toolSlug: options.toolSlug ?? TOOL_SLUG,
       city: options.city,
       dryRun: options.dryRun,
     });
@@ -304,7 +304,7 @@ export class GoogleMapsTool extends BaseTool {
 }
 
 /** Factory for orchestrator usage */
-export function createTool(options: { city: string; dryRun?: boolean; baselineOnly?: boolean }): GoogleMapsTool {
+export function createTool(options: { city: string; dryRun?: boolean; baselineOnly?: boolean; toolSlug?: string }): GoogleMapsTool {
   return new GoogleMapsTool({ ...options, dryRun: options.dryRun ?? false, baselineOnly: options.baselineOnly ?? false, verbose: false });
 }
 

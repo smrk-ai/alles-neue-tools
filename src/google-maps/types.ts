@@ -95,4 +95,5 @@ export interface GoogleMapsToolOptions {
   dryRun: boolean;
   baselineOnly: boolean;
   verbose: boolean;
+  toolSlug?: string;
 }

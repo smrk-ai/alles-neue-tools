@@ -16,7 +16,7 @@ import { BaseTool } from '../shared/tool-runner.js';
 // --- Tool Registry ---
 
 interface ToolFactory {
-  createTool: (options: { city: string; dryRun?: boolean; baselineOnly?: boolean }) => BaseTool;
+  createTool: (options: { city: string; dryRun?: boolean; baselineOnly?: boolean; toolSlug?: string }) => BaseTool;
 }
 
 // --- DB Run Config ---
@@ -153,6 +153,7 @@ async function main() {
       city: cityConfig.slug,
       dryRun: effectiveDryRun,
       baselineOnly: effectiveBaselineOnly,
+      toolSlug: configSlug,
     });
     const report = await tool.execute(cityConfig);
     reports.push(report);
