@@ -86,7 +86,7 @@ export async function updateToolRun(
   }
 ): Promise<void> {
   try {
-    await fetch(config.toolRuns.apiUrl, {
+    const res = await fetch(config.toolRuns.apiUrl, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -94,6 +94,11 @@ export async function updateToolRun(
       },
       body: JSON.stringify({ run_id: runId, ...update }),
     });
+
+    if (!res.ok) {
+      const body = await res.text();
+      toolRunLog.error(`Failed to update tool run (${res.status}): ${body}`);
+    }
   } catch (err) {
     toolRunLog.error(`Failed to update tool run`, { error: errorToString(err) });
   }
@@ -221,10 +226,14 @@ export abstract class BaseTool {
       report.finishedAt = finishedAt;
       report.durationMs = finishedAt.getTime() - startedAt.getTime();
 
-      // Update tool run in backend
+      // Update tool run in backend.
+      // The tool_run_status DB enum has no 'partial' value, so a run with
+      // some errors ('partial') is reported as 'error' too — otherwise it
+      // would show green in the admin dashboard despite failures (e.g. the
+      // OSM Overpass 406 errors that went unnoticed for days).
       if (runId) {
         await updateToolRun(runId, {
-          status: report.status === 'failed' ? 'error' : 'success',
+          status: report.status === 'success' ? 'success' : 'error',
           leads_found: report.leadsFound,
           leads_new: report.leadsNew,
           error_message: report.errors.length > 0 ? report.errors.join('; ') : undefined,
