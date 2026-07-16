@@ -218,5 +218,13 @@ export async function getTieredDetailsBatch(
   return { details, tier: currentTier, queuedIds };
 }
 
+/**
+ * Fetch Place Details on the Pro tier (name/category/location, no rating-count).
+ * Used by the names backfill CLI — always Pro, never falls back to Enterprise.
+ */
+export async function getPlaceDetailsPro(placeId: string): Promise<PlaceBasicDetails> {
+  return withRetry(() => getPlaceDetails(placeId, PRO_FIELDS));
+}
+
 // Re-export for use by grid-scanner
 export { withRetry };
