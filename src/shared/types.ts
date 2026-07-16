@@ -43,6 +43,7 @@ export interface PipelineLeadInput {
   phone?: string | null;
   lat?: number | null;
   lng?: number | null;
+  is_baseline?: boolean;
   raw_data?: Record<string, unknown> | null;
 }
 

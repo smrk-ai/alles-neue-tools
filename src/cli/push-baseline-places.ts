@@ -48,6 +48,7 @@ function transformKnownToLead(row: KnownPlaceRow): PipelineLeadInput {
     google_maps_url: (raw.googleMapsUri as string) ?? null,
     lat: location?.latitude ?? null,
     lng: location?.longitude ?? null,
+    is_baseline: true,
     raw_data: {
       google_place_id: raw.id ?? row.source_id,
       google_types: types,

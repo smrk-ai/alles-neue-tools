@@ -32,6 +32,7 @@ export function transformToLead(
     google_maps_url: place.googleMapsUri ?? null,
     lat: place.location?.latitude ?? null,
     lng: place.location?.longitude ?? null,
+    is_baseline: meta.isBaseline,
     raw_data: {
       google_place_id: place.id,
       google_types: place.types,
