@@ -61,6 +61,19 @@ export async function pushLead(
       return { success: true, id: data.existing_id, duplicate: true };
     }
 
+    // Name+geo dedup match (rotated source ID) — server returns 200 instead of
+    // 409 since no unique-index violation occurred, but it's still a success:
+    // the place is already known, so it must be marked known like any duplicate.
+    if (res.status === 200) {
+      const data = await res.json() as { duplicate?: boolean; matched?: string };
+      if (data.duplicate) {
+        log.info(`Duplicate lead (name+geo match): ${lead.name || lead.source_id || 'unnamed'}`, { matched: data.matched });
+        return { success: true, id: data.matched, duplicate: true };
+      }
+      log.error(`Push failed (200 without duplicate flag): ${JSON.stringify(data)}`);
+      return { success: false, error: `Unexpected 200 response: ${JSON.stringify(data)}` };
+    }
+
     const errorBody = await res.text();
     log.error(`Push failed (${res.status}): ${errorBody}`);
     return { success: false, error: `HTTP ${res.status}: ${errorBody}` };
