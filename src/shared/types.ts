@@ -109,6 +109,8 @@ export interface DeltaMarkEntry extends DeltaEntry {
   category?: CategoryGuess;
   subType?: string;
   rawData?: Record<string, unknown>;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface DeltaStats {

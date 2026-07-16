@@ -172,6 +172,8 @@ function buildKnownPlaceRow(e: DeltaMarkEntry): Record<string, unknown> {
   if (e.category) row.category = e.category;
   if (e.subType) row.sub_type = e.subType;
   if (e.rawData) row.raw_data = e.rawData;
+  if (e.lat != null) row.lat = e.lat;
+  if (e.lng != null) row.lng = e.lng;
   return row;
 }
 
@@ -214,12 +216,12 @@ async function getCandidates(
 
   const data = await fetchAllPages<{
     id: string; source: string; name: string | null; name_normalized: string | null;
-    canonical_id: string | null;
+    canonical_id: string | null; lat: number | null; lng: number | null;
   }>(
     (from, to) => {
       let query = db
         .from('known_places')
-        .select('id, source, name, name_normalized, canonical_id')
+        .select('id, source, name, name_normalized, canonical_id, lat, lng')
         .eq('city_id', cityId)
         .neq('source', excludeSource)
         .not('name_normalized', 'is', null)
@@ -238,6 +240,8 @@ async function getCandidates(
     name: row.name ?? '',
     nameNormalized: row.name_normalized,
     canonicalId: row.canonical_id,
+    lat: row.lat,
+    lng: row.lng,
   }));
 }
 
@@ -255,12 +259,12 @@ async function getIntraSourceCandidates(
 
   const data = await fetchAllPages<{
     id: string; source: string; source_id: string; name: string | null; name_normalized: string | null;
-    canonical_id: string | null;
+    canonical_id: string | null; lat: number | null; lng: number | null;
   }>(
     (from, to) => {
       let query = db
         .from('known_places')
-        .select('id, source, source_id, name, name_normalized, canonical_id')
+        .select('id, source, source_id, name, name_normalized, canonical_id, lat, lng')
         .eq('city_id', cityId)
         .eq('source', source)
         .not('name_normalized', 'is', null)
@@ -279,6 +283,8 @@ async function getIntraSourceCandidates(
     name: row.name ?? '',
     nameNormalized: row.name_normalized,
     canonicalId: row.canonical_id ?? row.id, // fall back to DB id as canonical
+    lat: row.lat,
+    lng: row.lng,
   }));
 }
 
@@ -286,36 +292,94 @@ function buildCacheKey(entry: { cityId: string; category?: string; source: strin
   return `${entry.cityId}::${entry.category ?? ''}::${entry.source}`;
 }
 
+function toCrossMatchResult(entry: DeltaMarkEntry, match: NonNullable<ReturnType<typeof findBestMatch>>): CrossMatchResult {
+  return {
+    entry,
+    matchedWith: {
+      id: match.candidateId,
+      canonicalId: match.canonicalId,
+      name: match.candidateName,
+      source: match.candidateSource,
+      score: match.score,
+    },
+  };
+}
+
 /**
- * Run name matching against a candidate cache.
- * Returns matched entries (with canonical linkage) and unmatched entries.
+ * Run name+geo matching against a candidate cache (grouped by city+category+source).
+ * Entries that don't match under their own category get one retry against the
+ * whole city without a category filter — Google frequently re-categorizes
+ * places between scans, which otherwise makes the matcher blind to real
+ * duplicates that changed category at the source.
  */
-function runMatchingPass(
+async function matchEntriesAgainstCandidates(
   entries: DeltaMarkEntry[],
-  candidateCache: Map<string, MatchCandidate[]>,
+  fetchCandidates: (cityId: string, category: string | undefined, source: string) => Promise<MatchCandidate[]>,
   filterSelf: boolean,
-): { matched: CrossMatchResult[]; unmatched: DeltaMarkEntry[] } {
+): Promise<{ matched: CrossMatchResult[]; unmatched: DeltaMarkEntry[] }> {
+  const groups = new Map<string, { cityId: string; category: string | undefined; source: string }>();
+  for (const entry of entries) {
+    const key = buildCacheKey(entry);
+    if (!groups.has(key)) groups.set(key, { cityId: entry.cityId, category: entry.category, source: entry.source });
+  }
+
+  const candidateCache = new Map<string, MatchCandidate[]>();
+  await Promise.all(
+    [...groups.entries()].map(([key, { cityId, category, source }]) =>
+      fetchCandidates(cityId, category, source).then((c) => candidateCache.set(key, c)),
+    ),
+  );
+
   const matched: CrossMatchResult[] = [];
-  const unmatched: DeltaMarkEntry[] = [];
+  const firstPassUnmatched: DeltaMarkEntry[] = [];
 
   for (const entry of entries) {
     let candidates = candidateCache.get(buildCacheKey(entry)) ?? [];
     if (filterSelf) candidates = candidates.filter((c) => c.id !== entry.sourceId);
 
-    const match = findBestMatch(entry.name!, candidates);
+    const match = findBestMatch(entry.name!, candidates, { lat: entry.lat, lng: entry.lng });
     if (match) {
-      matched.push({
-        entry,
-        matchedWith: {
-          id: match.candidateId,
-          canonicalId: match.canonicalId,
-          name: match.candidateName,
-          source: match.candidateSource,
-          score: match.score,
-        },
-      });
+      matched.push(toCrossMatchResult(entry, match));
     } else {
-      unmatched.push(entry);
+      firstPassUnmatched.push(entry);
+    }
+  }
+
+  // Category-loosening fallback — only entries that had a category filter applied
+  // in the first pass are worth retrying without one.
+  const retryable = firstPassUnmatched.filter((e) => e.category);
+  const unmatched = firstPassUnmatched.filter((e) => !e.category);
+
+  if (retryable.length > 0) {
+    const fallbackGroups = new Map<string, { cityId: string; source: string }>();
+    for (const entry of retryable) {
+      const key = `${entry.cityId}::${entry.source}`;
+      if (!fallbackGroups.has(key)) fallbackGroups.set(key, { cityId: entry.cityId, source: entry.source });
+    }
+
+    const fallbackCache = new Map<string, MatchCandidate[]>();
+    await Promise.all(
+      [...fallbackGroups.entries()].map(([key, { cityId, source }]) =>
+        fetchCandidates(cityId, undefined, source).then((c) => fallbackCache.set(key, c)),
+      ),
+    );
+
+    let fallbackHits = 0;
+    for (const entry of retryable) {
+      let candidates = fallbackCache.get(`${entry.cityId}::${entry.source}`) ?? [];
+      if (filterSelf) candidates = candidates.filter((c) => c.id !== entry.sourceId);
+
+      const match = findBestMatch(entry.name!, candidates, { lat: entry.lat, lng: entry.lng });
+      if (match) {
+        matched.push(toCrossMatchResult(entry, match));
+        fallbackHits++;
+      } else {
+        unmatched.push(entry);
+      }
+    }
+
+    if (fallbackHits > 0) {
+      log.info(`Category-fallback dedup: ${fallbackHits} matches found without category filter`);
     }
   }
 
@@ -343,35 +407,23 @@ export async function findNewWithCrossCheck(
     return { trulyNew: newEntries, crossMatched: [] };
   }
 
-  const uniqueKeys = new Map<string, { cityId: string; category: string | undefined; source: string }>();
-  for (const entry of withName) {
-    const key = buildCacheKey(entry);
-    if (!uniqueKeys.has(key)) uniqueKeys.set(key, { cityId: entry.cityId, category: entry.category, source: entry.source });
-  }
-
   // Step 1b: Intra-source name dedup (Google Maps assigns multiple IDs to the same physical place)
-  const intraCandidateCache = new Map<string, MatchCandidate[]>();
-  await Promise.all(
-    [...uniqueKeys.entries()].map(([key, { cityId, category, source }]) =>
-      getIntraSourceCandidates(cityId, source, category).then((c) => intraCandidateCache.set(key, c)),
-    ),
+  const { matched: intraMatched, unmatched: afterIntraDedup } = await matchEntriesAgainstCandidates(
+    withName,
+    (cityId, category, source) => getIntraSourceCandidates(cityId, source, category),
+    true,
   );
-
-  const { matched: intraMatched, unmatched: afterIntraDedup } = runMatchingPass(withName, intraCandidateCache, true);
 
   // Step 2: Cross-source name matching (only if entries survived intra-source dedup)
   let crossMatched: CrossMatchResult[] = [];
   const trulyNew: DeltaMarkEntry[] = [...withoutName];
 
   if (afterIntraDedup.length > 0) {
-    const crossCandidateCache = new Map<string, MatchCandidate[]>();
-    await Promise.all(
-      [...uniqueKeys.entries()].map(([key, { cityId, category, source }]) =>
-        getCandidates(cityId, category, source).then((c) => crossCandidateCache.set(key, c)),
-      ),
+    const crossResult = await matchEntriesAgainstCandidates(
+      afterIntraDedup,
+      (cityId, category, source) => getCandidates(cityId, category, source),
+      false,
     );
-
-    const crossResult = runMatchingPass(afterIntraDedup, crossCandidateCache, false);
     crossMatched = crossResult.matched;
     trulyNew.push(...crossResult.unmatched);
   } else {

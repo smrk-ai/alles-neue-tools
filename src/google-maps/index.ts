@@ -160,12 +160,14 @@ export class GoogleMapsTool extends BaseTool {
     const categoryById = new Map<string, CategoryGuess>();
     const subTypeById = new Map<string, string>();
     const rawDataById = new Map<string, Record<string, unknown>>();
+    const locationById = new Map<string, { lat: number; lng: number }>();
     for (const d of details) {
       if (d.displayName?.text) nameById.set(d.id, d.displayName.text);
       const cat = mapCategoryFromPrimaryType(d.primaryType) ?? mapCategory(d.types);
       if (cat) categoryById.set(d.id, cat);
       const st = resolveSubType(d.primaryType, d.types, d.displayName?.text);
       if (st) subTypeById.set(d.id, st);
+      if (d.location) locationById.set(d.id, { lat: d.location.latitude, lng: d.location.longitude });
       rawDataById.set(d.id, {
         tier,
         fetched_at: new Date().toISOString(),
@@ -185,6 +187,8 @@ export class GoogleMapsTool extends BaseTool {
         name: d.displayName?.text,
         category: categoryById.get(d.id),
         subType: subTypeById.get(d.id),
+        lat: d.location?.latitude,
+        lng: d.location?.longitude,
       }));
 
     let trulyNewIds: Set<string>;
@@ -241,7 +245,7 @@ export class GoogleMapsTool extends BaseTool {
       ? [...trulyNewIds].filter((id) => !failedPlaceIds.has(id))
       : [...trulyNewIds];
     if (idsToMark.length > 0) {
-      await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById, rawDataById, subTypeById);
+      await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById, rawDataById, subTypeById, locationById);
     }
 
     return { pushed: pushedCount, budgetExhausted: false };

@@ -3,6 +3,7 @@
 // ===========================================
 
 import type { LeadSource } from './types.js';
+import { haversineMeters } from './geo.js';
 
 // --- Jaro-Winkler Implementation ---
 
@@ -105,6 +106,12 @@ export function normalizeName(name: string): string {
 
 export const MATCH_THRESHOLD = 0.92;
 
+// A weaker name score is accepted as a match if the two places are also
+// physically close together — catches cases like "Cafe Sông" vs "Song Cafe"
+// (name drift) that would otherwise miss the 0.92 name-only threshold.
+export const GEO_MATCH_THRESHOLD = 0.70;
+export const GEO_MATCH_DISTANCE_M = 75;
+
 function scoreNormalized(normA: string, normB: string): number {
   const jw = jaroWinkler(normA, normB);
   const containment = normA.includes(normB) || normB.includes(normA) ? 0.05 : 0;
@@ -150,6 +157,13 @@ export interface MatchCandidate {
   name: string;
   nameNormalized: string | null;
   canonicalId: string | null;
+  lat?: number | null;
+  lng?: number | null;
+}
+
+export interface MatchEntryGeo {
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface MatchResult {
@@ -162,49 +176,63 @@ export interface MatchResult {
 
 /**
  * Find the best cross-source match for a given name among candidates.
- * Returns null if no match above threshold.
+ * A candidate matches if either (a) the name score clears MATCH_THRESHOLD on
+ * its own, or (b) the two places are within GEO_MATCH_DISTANCE_M of each
+ * other AND the name score clears the weaker GEO_MATCH_THRESHOLD. Among
+ * matching candidates, geo-confirmed ones are preferred on near-ties.
+ * Returns null if no candidate matches.
  */
 export function findBestMatch(
   name: string,
   candidates: MatchCandidate[],
+  entryGeo?: MatchEntryGeo,
 ): MatchResult | null {
   if (!name || candidates.length === 0) return null;
 
   const normalized = normalizeName(name);
   if (!normalized) return null;
 
+  const hasEntryGeo = entryGeo?.lat != null && entryGeo?.lng != null;
+
+  let best: MatchCandidate | null = null;
   let bestScore = 0;
-  let bestCandidate: MatchCandidate | null = null;
+  let bestRank = -1;
 
   for (const c of candidates) {
     const cNorm = c.nameNormalized ?? normalizeName(c.name);
     if (!cNorm) continue;
 
-    // Exact normalized match → instant win
-    if (normalized === cNorm) {
-      bestScore = 1.0;
-      bestCandidate = c;
-      break;
-    }
+    const score = normalized === cNorm ? 1.0 : scoreNormalized(normalized, cNorm);
 
-    const total = scoreNormalized(normalized, cNorm);
+    const hasCandidateGeo = c.lat != null && c.lng != null;
+    const withinGeoRange =
+      hasEntryGeo &&
+      hasCandidateGeo &&
+      haversineMeters(entryGeo!.lat!, entryGeo!.lng!, c.lat!, c.lng!) < GEO_MATCH_DISTANCE_M;
 
-    if (total > bestScore) {
-      bestScore = total;
-      bestCandidate = c;
+    const isMatch = score >= MATCH_THRESHOLD || (withinGeoRange && score >= GEO_MATCH_THRESHOLD);
+    if (!isMatch) continue;
+
+    // Tiny bonus so a geo-confirmed candidate wins ties against a same-score
+    // candidate without coordinates — doesn't change which candidates qualify.
+    const rank = score + (withinGeoRange ? 0.001 : 0);
+    if (rank > bestRank) {
+      best = c;
+      bestScore = score;
+      bestRank = rank;
     }
   }
 
-  if (!bestCandidate || bestScore < MATCH_THRESHOLD) return null;
+  if (!best) return null;
 
   // Resolve canonical: use existing canonical_id if set, otherwise the candidate itself
-  const canonicalId = bestCandidate.canonicalId ?? bestCandidate.id;
+  const canonicalId = best.canonicalId ?? best.id;
 
   return {
-    candidateId: bestCandidate.id,
+    candidateId: best.id,
     canonicalId,
-    candidateName: bestCandidate.name,
-    candidateSource: bestCandidate.source,
+    candidateName: best.name,
+    candidateSource: best.source,
     score: bestScore,
   };
 }

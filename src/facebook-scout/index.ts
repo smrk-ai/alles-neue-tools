@@ -96,6 +96,8 @@ export class FacebookScoutTool extends BaseTool {
         city: city.name,
         cityId: city.id,
         name: p.name,
+        lat: p.location?.latitude,
+        lng: p.location?.longitude,
       })),
     );
 

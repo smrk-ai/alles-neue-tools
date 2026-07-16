@@ -52,6 +52,7 @@ export async function markAsProcessed(
   categoryById?: Map<string, CategoryGuess>,
   rawDataById?: Map<string, Record<string, unknown>>,
   subTypeById?: Map<string, string>,
+  locationById?: Map<string, { lat: number; lng: number }>,
 ): Promise<void> {
   const entries = newIds.map((id) => ({
     source: 'google_maps' as const,
@@ -63,6 +64,8 @@ export async function markAsProcessed(
     category: categoryById?.get(id),
     subType: subTypeById?.get(id),
     rawData: rawDataById?.get(id),
+    lat: locationById?.get(id)?.lat,
+    lng: locationById?.get(id)?.lng,
   }));
 
   await markKnown(entries);
