@@ -1,7 +1,7 @@
 import { config } from '../shared/config.js';
 import { createLogger } from '../shared/logger.js';
 import { sleep } from '../shared/utils.js';
-import { canMakeCall, incrementBudget, getAvailableDetailTier } from '../shared/budget-tracker.js';
+import { getAvailableDetailTier, reserveBudget, releaseBudget } from '../shared/budget-tracker.js';
 import type { DetailTier } from '../shared/types.js';
 import type { TextSearchParams, PlaceBasicDetails } from './types.js';
 import { PlacesApiError } from './types.js';
@@ -185,29 +185,36 @@ export async function getTieredDetailsBatch(
   for (let i = 0; i < placeIds.length; i++) {
     const placeId = placeIds[i];
 
-    // Check budget BEFORE the API call
-    const canCall = await canMakeCall(toolSlug, currentTier);
-
-    if (!canCall) {
-      // Current tier exhausted — try next tier
-      log.info(`Tier ${currentTier} exhausted after ${details.length} calls, checking next tier...`);
-      currentTier = await getAvailableDetailTier(toolSlug);
-
-      if (currentTier === 'queued') {
-        log.warn(`All tiers exhausted — queueing remaining ${placeIds.length - i} IDs`);
-        queuedIds.push(...placeIds.slice(i));
+    // Reserve the call slot atomically BEFORE the API call. A failed
+    // reservation means the tier is exhausted — even under concurrent runs
+    // (the June overshoot came from check-then-increment races here).
+    let reserved = await reserveBudget(toolSlug, currentTier);
+    while (!reserved) {
+      const nextTier = await getAvailableDetailTier(toolSlug);
+      if (nextTier === 'queued' || nextTier === currentTier) {
+        // 'queued' = everything exhausted; same tier = status disagrees with
+        // the atomic check (boundary race) → fail closed either way.
+        currentTier = 'queued';
         break;
       }
+      log.info(`Tier exhausted after ${details.length} calls, switching to ${nextTier}...`);
+      currentTier = nextTier;
+      reserved = await reserveBudget(toolSlug, currentTier);
+    }
+
+    if (currentTier === 'queued') {
+      log.warn(`All tiers exhausted — queueing remaining ${placeIds.length - i} IDs`);
+      queuedIds.push(...placeIds.slice(i));
+      break;
     }
 
     try {
       const fieldMask = fieldMaskForTier(currentTier);
       const detail = await withRetry(() => getPlaceDetails(placeId, fieldMask));
       details.push(detail);
-
-      // Increment budget AFTER successful call
-      await incrementBudget(toolSlug, currentTier);
     } catch (error) {
+      // Call failed — give the reserved slot back.
+      await releaseBudget(toolSlug, currentTier);
       log.warn(`Failed to get details for ${placeId}: ${error instanceof Error ? error.message : error}`);
     }
 

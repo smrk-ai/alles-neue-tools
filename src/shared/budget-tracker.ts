@@ -148,10 +148,70 @@ export async function incrementBudget(toolSlug: string, sku: ApiSku, count: numb
 /**
  * Check budget BEFORE making an API call.
  * Returns false if budget is exhausted.
+ *
+ * NOTE: read-only snapshot — racy under concurrency. For actually claiming a
+ * call slot use reserveBudget(), which is atomic (June 2026: 1,730/1,000
+ * Enterprise calls slipped through exactly this check).
  */
 export async function canMakeCall(toolSlug: string, sku: ApiSku): Promise<boolean> {
   const status = await getBudgetStatus(toolSlug, sku);
   return !status.exhausted;
+}
+
+/**
+ * Atomically reserve `count` call slots BEFORE making the API call(s).
+ * The conditional UPDATE in the RPC either claims the slots or leaves the
+ * counter untouched — safe under concurrent runs. Fails closed on RPC errors.
+ */
+export async function reserveBudget(toolSlug: string, sku: ApiSku, count: number = 1): Promise<boolean> {
+  // Ensures the month row exists (auto-created) before the RPC touches it.
+  const status = await getBudgetStatus(toolSlug, sku);
+  if (status.exhausted) return false;
+
+  const db = getSupabaseClient();
+  const { data, error } = await db.rpc('reserve_api_budget', {
+    p_tool_slug: toolSlug,
+    p_sku: sku,
+    p_month: getCurrentMonth(),
+    p_count: count,
+  });
+
+  if (error) {
+    log.error(`reserveBudget RPC failed for ${sku} — failing closed`, { error: error.message });
+    return false;
+  }
+
+  if (data !== true) {
+    log.warn(`Budget exhausted for ${sku} (${status.callsUsed}+${count} > ${status.callsSafety} in ${status.month})`);
+    return false;
+  }
+
+  // Warning at 80%+ usage (mirrors incrementBudget behavior)
+  const newUsed = status.callsUsed + count;
+  const newPercent = Math.round((newUsed / status.callsSafety) * 100);
+  if (newPercent >= 80 && status.usagePercent < 80) {
+    log.warn(`Budget warning: ${sku} at ${newPercent}% (${newUsed}/${status.callsSafety})`);
+  }
+
+  return true;
+}
+
+/**
+ * Give reserved slots back when the API call itself failed.
+ */
+export async function releaseBudget(toolSlug: string, sku: ApiSku, count: number = 1): Promise<void> {
+  const db = getSupabaseClient();
+  const { error } = await db.rpc('release_api_budget', {
+    p_tool_slug: toolSlug,
+    p_sku: sku,
+    p_month: getCurrentMonth(),
+    p_count: count,
+  });
+
+  if (error) {
+    // Non-fatal: worst case the counter stays slightly too high (conservative).
+    log.warn(`releaseBudget RPC failed for ${sku}`, { error: error.message });
+  }
 }
 
 /**

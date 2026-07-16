@@ -14,7 +14,7 @@ import { getSupabaseClient } from '../shared/supabase-client.js';
 import { normalizeName } from '../shared/name-matcher.js';
 import { getPlaceDetailsPro } from '../google-maps/places-client.js';
 import { mapCategory, mapCategoryFromPrimaryType } from '../google-maps/category-mapper.js';
-import { canMakeCall, incrementBudget, getBudgetStatus } from '../shared/budget-tracker.js';
+import { reserveBudget, getBudgetStatus } from '../shared/budget-tracker.js';
 import { sleep } from '../shared/utils.js';
 
 const TOOL_SLUG = 'google-maps';
@@ -107,15 +107,16 @@ async function main() {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    const canCall = await canMakeCall(TOOL_SLUG, SKU);
-    if (!canCall) {
+    // Atomic reservation BEFORE the call (failed attempts stay counted —
+    // conservative, a 404 may still be a billed request).
+    const reserved = await reserveBudget(TOOL_SLUG, SKU);
+    if (!reserved) {
       budgetExhausted = true;
       break;
     }
 
     try {
       const detail = await getPlaceDetailsPro(row.source_id);
-      await incrementBudget(TOOL_SLUG, SKU);
       fetched++;
 
       const name = detail.displayName?.text ?? null;
