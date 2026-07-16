@@ -7,6 +7,7 @@ import type { DeltaEntry, DeltaMarkEntry, DeltaStats, CrossMatchResult } from '.
 const log = createLogger('delta-store');
 
 const BATCH_SIZE = 100;
+const PAGE_SIZE = 1000; // PostgREST default row cap — must paginate past it
 
 /**
  * Find which entries are NEW (not yet in known_places).
@@ -175,8 +176,34 @@ function buildKnownPlaceRow(e: DeltaMarkEntry): Record<string, unknown> {
 }
 
 /**
+ * Fetch all rows of a query, paginating past PostgREST's 1000-row default cap.
+ * Stops once a page comes back shorter than PAGE_SIZE (last page).
+ */
+async function fetchAllPages<T>(
+  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  context: Record<string, unknown>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await buildQuery(offset, offset + PAGE_SIZE - 1);
+    if (error) {
+      log.error('fetchAllPages failed', { error: error.message, offset, ...context });
+      throw new Error(error.message);
+    }
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return all;
+}
+
+/**
  * Load cross-source match candidates from known_places.
- * Returns entries from OTHER sources in the same city+category.
+ * Returns entries from OTHER sources in the same city+category (paginated —
+ * without .range() PostgREST silently caps at 1000 rows, which used to hide
+ * the majority of hotel/restaurant candidates).
  */
 async function getCandidates(
   cityId: string,
@@ -185,23 +212,27 @@ async function getCandidates(
 ): Promise<MatchCandidate[]> {
   const db = getSupabaseClient();
 
-  let query = db
-    .from('known_places')
-    .select('id, source, name, name_normalized, canonical_id')
-    .eq('city_id', cityId)
-    .neq('source', excludeSource)
-    .not('name_normalized', 'is', null);
+  const data = await fetchAllPages<{
+    id: string; source: string; name: string | null; name_normalized: string | null;
+    canonical_id: string | null;
+  }>(
+    (from, to) => {
+      let query = db
+        .from('known_places')
+        .select('id, source, name, name_normalized, canonical_id')
+        .eq('city_id', cityId)
+        .neq('source', excludeSource)
+        .not('name_normalized', 'is', null)
+        .range(from, to);
+      if (category) query = query.eq('category', category);
+      return query;
+    },
+    { cityId, category, excludeSource },
+  );
 
-  if (category) query = query.eq('category', category);
+  log.info(`getCandidates: ${data.length} candidates (city=${cityId}, category=${category ?? 'any'}, exclude=${excludeSource})`);
 
-  const { data, error } = await query;
-
-  if (error) {
-    log.error(`getCandidates failed`, { error: error.message, cityId, category, excludeSource });
-    throw error;
-  }
-
-  return (data ?? []).map((row) => ({
+  return data.map((row) => ({
     id: row.id,
     source: row.source,
     name: row.name ?? '',
@@ -213,6 +244,7 @@ async function getCandidates(
 /**
  * Load same-source match candidates from known_places.
  * Used to detect duplicate Place IDs that map to the same physical location.
+ * Paginated for the same reason as getCandidates().
  */
 async function getIntraSourceCandidates(
   cityId: string,
@@ -221,23 +253,27 @@ async function getIntraSourceCandidates(
 ): Promise<MatchCandidate[]> {
   const db = getSupabaseClient();
 
-  let query = db
-    .from('known_places')
-    .select('id, source, source_id, name, name_normalized, canonical_id')
-    .eq('city_id', cityId)
-    .eq('source', source)
-    .not('name_normalized', 'is', null);
+  const data = await fetchAllPages<{
+    id: string; source: string; source_id: string; name: string | null; name_normalized: string | null;
+    canonical_id: string | null;
+  }>(
+    (from, to) => {
+      let query = db
+        .from('known_places')
+        .select('id, source, source_id, name, name_normalized, canonical_id')
+        .eq('city_id', cityId)
+        .eq('source', source)
+        .not('name_normalized', 'is', null)
+        .range(from, to);
+      if (category) query = query.eq('category', category);
+      return query;
+    },
+    { cityId, source, category },
+  );
 
-  if (category) query = query.eq('category', category);
+  log.info(`getIntraSourceCandidates: ${data.length} candidates (city=${cityId}, source=${source}, category=${category ?? 'any'})`);
 
-  const { data, error } = await query;
-
-  if (error) {
-    log.error(`getIntraSourceCandidates failed`, { error: error.message, cityId, source, category });
-    throw error;
-  }
-
-  return (data ?? []).map((row) => ({
+  return data.map((row) => ({
     id: row.source_id, // use source_id so we can filter out self
     source: row.source,
     name: row.name ?? '',
