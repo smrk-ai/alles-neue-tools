@@ -135,11 +135,21 @@ export class ChangeDetectionTool extends BaseTool {
       // Step 7: Transform to leads and push
       const leads = transformToLeads(newItems, watchConfig);
 
+      // Failed pushes (index-aligned with newItems/leads) must NOT be marked
+      // known below — otherwise they're lost forever, never retried.
+      const failedSourceIds = new Set<string>();
+
       if (!this.dryRun && leads.length > 0) {
         const results = await pushLeads(leads);
         const pushed = results.filter((r) => r.success).length;
         totalPushed += pushed;
         this.log.info(`Pushed ${pushed}/${leads.length} leads from ${watchConfig.id}`);
+        if (pushed < leads.length) {
+          this.log.warn(`${leads.length - pushed} pushes failed — will retry next run`);
+          results.forEach((r, i) => {
+            if (!r.success) failedSourceIds.add(`cd:${watchConfig.id}:${newItems[i].externalId}`);
+          });
+        }
       } else if (this.dryRun && leads.length > 0) {
         this.log.info(`[DRY RUN] Would push ${leads.length} leads from ${watchConfig.id}. Skipping.`);
         for (const lead of leads) {
@@ -147,15 +157,19 @@ export class ChangeDetectionTool extends BaseTool {
         }
       }
 
-      // Step 8: Mark ALL parsed items as known (not just new ones)
+      // Step 8: Mark ALL parsed items as known (not just new ones) — except
+      // new items whose push failed, so those retry next run instead of
+      // being silently lost.
       if (!this.dryRun) {
-        const markEntries: DeltaMarkEntry[] = items.map((item) => ({
-          source: watchConfig.leadSource,
-          sourceId: `cd:${watchConfig.id}:${item.externalId}`,
-          city: watchConfig.city,
-          cityId: getCityIdBySlug(watchConfig.citySlug)!,
-          name: item.name?.substring(0, 100) || undefined,
-        }));
+        const markEntries: DeltaMarkEntry[] = items
+          .filter((item) => !failedSourceIds.has(`cd:${watchConfig.id}:${item.externalId}`))
+          .map((item) => ({
+            source: watchConfig.leadSource,
+            sourceId: `cd:${watchConfig.id}:${item.externalId}`,
+            city: watchConfig.city,
+            cityId: getCityIdBySlug(watchConfig.citySlug)!,
+            name: item.name?.substring(0, 100) || undefined,
+          }));
 
         try {
           await markKnown(markEntries);

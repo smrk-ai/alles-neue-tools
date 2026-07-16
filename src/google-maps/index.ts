@@ -2,7 +2,7 @@ import { errorToString } from '../shared/utils.js';
 import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
-import { updateCategoryBulk, findNewWithCrossCheck, markCrossMatched, markKnown } from '../shared/delta-store.js';
+import { updateCategoryBulk, findNewWithCrossCheck, markCrossMatched, markKnown, markPushed } from '../shared/delta-store.js';
 import type { CategoryGuess, CityConfig, ToolRunReport, DeltaMarkEntry } from '../shared/types.js';
 import { scanCity } from './grid-scanner.js';
 import { detectNew, markAsProcessed } from './delta-detector.js';
@@ -246,6 +246,14 @@ export class GoogleMapsTool extends BaseTool {
       : [...trulyNewIds];
     if (idsToMark.length > 0) {
       await markAsProcessed(idsToMark, city, scanResult, nameById, categoryById, rawDataById, subTypeById, locationById);
+
+      // Link known_places → pipeline_leads now that the known_places row exists
+      // (markPushed is an UPDATE, not an upsert, so it must run after markAsProcessed).
+      await Promise.all(
+        results.map((r, i) =>
+          r.success && r.id ? markPushed('google_maps', leads[i].source_id!, r.id, city.id) : Promise.resolve(),
+        ),
+      );
     }
 
     return { pushed: pushedCount, budgetExhausted: false };

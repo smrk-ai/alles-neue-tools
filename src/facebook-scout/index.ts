@@ -87,10 +87,18 @@ export class FacebookScoutTool extends BaseTool {
     // Step 6: Push to pipeline
     const results = await pushLeads(leads);
     const pushedCount = results.filter((r) => r.success).length;
+    if (pushedCount < leads.length) {
+      this.log.warn(`${leads.length - pushedCount} pushes failed — will retry next run`);
+    }
 
-    // Step 7: Mark as known in delta store
+    // Step 7: Mark as known in delta store (exclude failed pushes so they retry
+    // next run instead of being silently lost — leads/newPlaces are index-aligned)
+    const failedIds = new Set(
+      results.flatMap((r, i) => (r.success ? [] : [newPlaces[i].id])),
+    );
+    const toMark = newPlaces.filter((p) => !failedIds.has(p.id));
     await markKnown(
-      newPlaces.map((p) => ({
+      toMark.map((p) => ({
         source: 'facebook' as const,
         sourceId: p.id,
         city: city.name,

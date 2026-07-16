@@ -168,10 +168,18 @@ export class InstagramScoutTool extends BaseTool {
     // Step 9: Push to pipeline
     const results = await pushLeads(leads);
     const pushedCount = results.filter((r) => r.success).length;
+    if (pushedCount < leads.length) {
+      this.log.warn(`${leads.length - pushedCount} pushes failed — will retry next run`);
+    }
 
-    // Step 10: Mark as known in delta store
+    // Step 10: Mark as known in delta store (exclude failed pushes so they retry
+    // next run instead of being silently lost — leads/newAnalyses are index-aligned)
+    const failedIds = new Set(
+      results.flatMap((r, i) => (r.success ? [] : [`ig_post_${newAnalyses[i].post.id}`])),
+    );
+    const toMark = newAnalyses.filter(({ post }) => !failedIds.has(`ig_post_${post.id}`));
     await markKnown(
-      newAnalyses.map(({ post, analysis }) => ({
+      toMark.map(({ post, analysis }) => ({
         source: 'instagram' as const,
         sourceId: `ig_post_${post.id}`,
         city: city.name,

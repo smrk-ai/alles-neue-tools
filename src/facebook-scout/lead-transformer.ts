@@ -50,6 +50,16 @@ function mapSingleCategory(category: string): CategoryGuess | null {
 
 // --- Lead Transformer ---
 
+/**
+ * Facebook often returns scheme-less website values (e.g. "www.foo.com").
+ * The pipeline's Zod schema requires a full .url() — without a scheme the
+ * entire lead gets rejected with 400, silently dropping it.
+ */
+function normalizeWebsite(website: string | null | undefined): string | null {
+  if (!website) return null;
+  return /^https?:\/\//i.test(website) ? website : `https://${website}`;
+}
+
 export function transformToLead(
   place: FacebookPlace,
   meta: { city: string; cityId: string; scanDate: string },
@@ -58,13 +68,13 @@ export function transformToLead(
     source: 'facebook',
     source_id: place.id,
     source_url: place.link || `https://www.facebook.com/${place.id}`,
-    name: place.name || null,
+    name: place.name ? place.name.substring(0, 200) : null,
     address: place.single_line_address || place.location?.street || null,
     city: meta.city,
     city_id: meta.cityId,
     category_guess: mapFacebookCategory(place),
     phone: place.phone || null,
-    website: place.website || null,
+    website: normalizeWebsite(place.website),
     facebook: place.link || `https://www.facebook.com/${place.id}`,
     lat: place.location?.latitude ?? null,
     lng: place.location?.longitude ?? null,
