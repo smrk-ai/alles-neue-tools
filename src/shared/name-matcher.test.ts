@@ -143,6 +143,72 @@ describe('findBestMatch — geo-assisted matching', () => {
     const result = findBestMatch('Sunrise Homestay', [candidate({ lat: null, lng: null })], near);
     assert.ok(result);
   });
+
+  test('matchType is "name" for strong scores, "geo" for proximity-assisted', () => {
+    const strong = findBestMatch('Sunrise Homestay', [candidate()], near);
+    assert.equal(strong?.matchType, 'name');
+
+    const geoAssisted = findBestMatch('Sun Homestay', [candidate()], near);
+    assert.equal(geoAssisted?.matchType, 'geo');
+    assert.ok(geoAssisted?.distanceM !== undefined && geoAssisted.distanceM < GEO_MATCH_DISTANCE_M);
+  });
+});
+
+describe('findBestMatch — generic-name guard', () => {
+  const base = { lat: 15.8801, lng: 108.3380 };
+  const near = { lat: 15.8801 + 0.0003, lng: 108.3380 }; // ~33m away
+
+  function candidateNamed(name: string): MatchCandidate {
+    return {
+      id: 'cand-generic',
+      source: 'google_maps',
+      name,
+      nameNormalized: normalizeName(name),
+      canonicalId: null,
+      lat: base.lat,
+      lng: base.lng,
+    };
+  }
+
+  test('generic prefix alone must not geo-match two different venues', () => {
+    // JW rewards the shared "ca phe" prefix — the score clears GEO_MATCH_THRESHOLD,
+    // but the significant tokens ("muoi" vs "sua da") share nothing.
+    assert.ok(matchScore('Ca Phe Muoi', 'Ca Phe Sua Da') >= 0.70, 'premise: prefix-inflated score');
+    const result = findBestMatch('Ca Phe Muoi', [candidateNamed('Ca Phe Sua Da')], near);
+    assert.equal(result, null);
+  });
+
+  test('quan-pho cluster: different shops with generic prefixes stay separate', () => {
+    const result = findBestMatch('Quan Pho Ba Lan', [candidateNamed('Quan Pho Ong Hai')], near);
+    assert.equal(result, null);
+  });
+
+  test('purely generic name only matches on exact equality AND proximity', () => {
+    // Same generic name, co-located → same place (name-grade evidence).
+    const colocated = findBestMatch('Coffee', [candidateNamed('Coffee')], near);
+    assert.ok(colocated);
+    assert.equal(colocated.matchType, 'name');
+
+    // Same generic name, no entry coordinates → cannot verify, no match.
+    const noGeo = findBestMatch('Coffee', [candidateNamed('Coffee')]);
+    assert.equal(noGeo, null);
+
+    // Similar-but-not-equal generic names never match.
+    const similar = findBestMatch('Ca Phe', [candidateNamed('Coffee')], near);
+    assert.equal(similar, null);
+  });
+
+  test('shared significant token still allows the intended geo assist', () => {
+    // Score ≈0.905 (between the two thresholds); "madam"/"khanh" are significant
+    // on both sides — legitimate name-drift catch, matched via proximity.
+    const result = findBestMatch(
+      'Madam Khanh Banh Mi',
+      [candidateNamed('Madam Khanh The Banh Mi Queen')],
+      near,
+    );
+    assert.ok(result, 'expected geo-assisted match via shared significant token');
+    assert.equal(result.matchType, 'geo');
+  });
 });
 
 describe('haversineMeters', () => {

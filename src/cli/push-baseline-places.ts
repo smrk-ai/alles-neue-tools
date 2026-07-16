@@ -42,7 +42,7 @@ function transformKnownToLead(row: KnownPlaceRow): PipelineLeadInput {
     city_id: row.city_id,
     category_guess:
       mapCategoryFromPrimaryType(primaryType) ??
-      mapCategory(types) ??
+      mapCategory(types ?? []) ??
       (row.category as PipelineLeadInput['category_guess']) ??
       null,
     google_maps_url: (raw.googleMapsUri as string) ?? null,

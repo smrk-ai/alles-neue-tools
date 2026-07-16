@@ -3,7 +3,7 @@ import { BaseTool } from '../shared/tool-runner.js';
 import { getCityBySlug } from '../shared/city-config.js';
 import { pushLeads } from '../shared/pipeline-client.js';
 import { updateCategoryBulk, findNewWithCrossCheck, markCrossMatched, markKnown, markPushed } from '../shared/delta-store.js';
-import type { CategoryGuess, CityConfig, ToolRunReport, DeltaMarkEntry } from '../shared/types.js';
+import type { CategoryGuess, CityConfig, CrossMatchResult, ToolRunReport, DeltaMarkEntry } from '../shared/types.js';
 import { scanCity } from './grid-scanner.js';
 import { detectNew, markAsProcessed } from './delta-detector.js';
 import { getTieredDetailsBatch } from './places-client.js';
@@ -13,6 +13,12 @@ import { resolveSubType } from '../shared/homestay-filter.js';
 import type { GoogleMapsToolOptions, GridScanResult } from './types.js';
 
 const TOOL_SLUG = 'google-maps';
+
+// Newness gate (Stufe B): a place with an established review history is not a
+// new opening — it only surfaced now because of ranking churn. >100 keeps a
+// comfortable buffer: genuinely new places can collect a few dozen reviews in
+// weeks, so anything below stays visible for human review (no "≤5 = new" gate).
+const MAX_REVIEWS_FOR_LEAD = 100;
 
 function formatScanErrors(scanResult: GridScanResult): string[] {
   return scanResult.errors.map(
@@ -192,9 +198,11 @@ export class GoogleMapsTool extends BaseTool {
       }));
 
     let trulyNewIds: Set<string>;
+    const suspectById = new Map<string, CrossMatchResult['matchedWith']>();
     try {
-      const { trulyNew, crossMatched } = await findNewWithCrossCheck(crossCheckEntries);
+      const { trulyNew, crossMatched, geoSuspects } = await findNewWithCrossCheck(crossCheckEntries);
       trulyNewIds = new Set(trulyNew.map((e) => e.sourceId));
+      for (const s of geoSuspects) suspectById.set(s.entry.sourceId, s.matchedWith);
 
       if (crossMatched.length > 0) {
         await markCrossMatched(crossMatched);
@@ -205,28 +213,60 @@ export class GoogleMapsTool extends BaseTool {
       trulyNewIds = new Set(chunk);
     }
 
-    // Step 6: Filter closed + homestays, transform to leads (only truly new)
+    // Step 6: Filter closed + homestays + established places, transform to leads
     // subTypeById has an entry iff the place is a homestay-type — reuse instead of re-calling filter
     const homestayCount = [...trulyNewIds].filter((id) => subTypeById.has(id)).length;
     if (homestayCount > 0) {
       this.log.info(`Skipping ${homestayCount} homestays (kept in known_places, not pushed to pipeline)`);
     }
 
+    // Newness gate: an established review history means "old place, newly seen"
+    // (ranking churn), not a new opening. Stays in known_places, never a lead.
+    // Places without rating data (Pro tier) pass through — we can't judge them.
+    const establishedIds = new Set(
+      details
+        .filter((d) =>
+          trulyNewIds.has(d.id) &&
+          !subTypeById.has(d.id) &&
+          d.userRatingCount != null &&
+          d.userRatingCount > MAX_REVIEWS_FOR_LEAD,
+        )
+        .map((d) => d.id),
+    );
+    if (establishedIds.size > 0) {
+      this.log.info(
+        `Newness gate: ${establishedIds.size} places with >${MAX_REVIEWS_FOR_LEAD} reviews skipped (kept in known_places, not pushed)`,
+      );
+    }
+
     const leads = details
       .filter((d) =>
         d.businessStatus !== 'CLOSED_PERMANENTLY' &&
         trulyNewIds.has(d.id) &&
-        !subTypeById.has(d.id),
+        !subTypeById.has(d.id) &&
+        !establishedIds.has(d.id),
       )
-      .map((d) =>
-        transformToLead(d, {
+      .map((d) => {
+        const lead = transformToLead(d, {
           city: city.name,
           cityId: city.id,
           h3Cell: cellLookup.get(d.id),
           scanDate,
           isBaseline: this.baselineOnly,
-        }),
-      );
+        });
+        // Flag mode: geo-suspected duplicates are pushed (not suppressed), but
+        // carry the suspicion so the admin sees it during review.
+        const suspect = suspectById.get(d.id);
+        if (suspect && lead.raw_data) {
+          lead.raw_data.suspected_duplicate = {
+            name: suspect.name,
+            source: suspect.source,
+            score: Number(suspect.score.toFixed(3)),
+            distance_m: suspect.distanceM != null ? Math.round(suspect.distanceM) : null,
+          };
+        }
+        return lead;
+      });
 
     // Step 7: Push to pipeline
     let pushedCount = 0;

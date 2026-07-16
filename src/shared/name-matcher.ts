@@ -112,6 +112,45 @@ export const MATCH_THRESHOLD = 0.92;
 export const GEO_MATCH_THRESHOLD = 0.70;
 export const GEO_MATCH_DISTANCE_M = 75;
 
+// Tokens that carry no identity on their own: place-type words, drinks/food
+// staples, and local area names shared by many venues (Tra Que, Cam Thanh, …).
+// Jaro-Winkler weights common prefixes heavily, so "Ca Phe ABC" vs "Ca Phe XYZ"
+// scores ~0.8 purely on the generic prefix — the geo fallback must therefore
+// require at least one shared *significant* token between the two names.
+const GENERIC_TOKENS = new Set([
+  // place types (beyond STRIP_TERMS, which only strips lodging terms)
+  'restaurant', 'quan', 'nha', 'hang', 'cafe', 'coffee', 'ca', 'phe', 'tra',
+  'bar', 'pub', 'club', 'bistro', 'eatery', 'kitchen', 'house', 'garden',
+  'shop', 'store', 'food', 'foods', 'drink', 'drinks', 'juice', 'smoothie',
+  'bbq', 'grill', 'buffet', 'bakery', 'banh', 'mi', 'pho', 'com', 'bun',
+  'sua', 'an', 'am', 'thuc',
+  // local area names shared by many venues in/around Hoi An
+  'hoi', 'que', 'cam', 'thanh', 'chau', 'minh', 'hai', 'ba', 'le', 'cua',
+  'dai', 'beach', 'riverside', 'river', 'old', 'town', 'ancient', 'village',
+  // filler
+  'the', 'la', 'de', 'and', 'by', 'at',
+]);
+
+/**
+ * Tokens of a normalized name that actually identify the place
+ * (everything that is not a generic type/area/filler word).
+ */
+export function getSignificantTokens(normalizedName: string): Set<string> {
+  return new Set(
+    normalizedName
+      .split(' ')
+      .filter((t) => t.length > 1 && !GENERIC_TOKENS.has(t)),
+  );
+}
+
+function hasSignificantOverlap(a: Set<string>, b: Set<string>): boolean {
+  if (a.size === 0 || b.size === 0) return false;
+  for (const t of a) {
+    if (b.has(t)) return true;
+  }
+  return false;
+}
+
 function scoreNormalized(normA: string, normB: string): number {
   const jw = jaroWinkler(normA, normB);
   const containment = normA.includes(normB) || normB.includes(normA) ? 0.05 : 0;
@@ -172,14 +211,26 @@ export interface MatchResult {
   candidateName: string;
   candidateSource: string;
   score: number;
+  /**
+   * 'name' — score cleared MATCH_THRESHOLD on its own (safe to auto-dedup).
+   * 'geo'  — only matched via proximity + weaker name score (flag, don't
+   *          silently suppress: false positives would hide real new places).
+   */
+  matchType: 'name' | 'geo';
+  /** Distance in meters, when both sides have coordinates. */
+  distanceM?: number;
 }
 
 /**
  * Find the best cross-source match for a given name among candidates.
  * A candidate matches if either (a) the name score clears MATCH_THRESHOLD on
  * its own, or (b) the two places are within GEO_MATCH_DISTANCE_M of each
- * other AND the name score clears the weaker GEO_MATCH_THRESHOLD. Among
- * matching candidates, geo-confirmed ones are preferred on near-ties.
+ * other AND the name score clears the weaker GEO_MATCH_THRESHOLD AND the two
+ * names share at least one significant (non-generic) token — otherwise dense
+ * clusters of "Ca Phe …"/"Quan Pho …" venues cross-match on prefix alone.
+ * Names consisting ONLY of generic tokens ("Coffee", "Ca Phe") carry no
+ * identity at all: they match solely on exact equality PLUS proximity.
+ * Among matching candidates, geo-confirmed ones are preferred on near-ties.
  * Returns null if no candidate matches.
  */
 export function findBestMatch(
@@ -192,11 +243,15 @@ export function findBestMatch(
   const normalized = normalizeName(name);
   if (!normalized) return null;
 
+  const entryTokens = getSignificantTokens(normalized);
+  const entryIsGeneric = entryTokens.size === 0;
   const hasEntryGeo = entryGeo?.lat != null && entryGeo?.lng != null;
 
   let best: MatchCandidate | null = null;
   let bestScore = 0;
   let bestRank = -1;
+  let bestGeo = false;
+  let bestDistance: number | undefined;
 
   for (const c of candidates) {
     const cNorm = c.nameNormalized ?? normalizeName(c.name);
@@ -205,12 +260,24 @@ export function findBestMatch(
     const score = normalized === cNorm ? 1.0 : scoreNormalized(normalized, cNorm);
 
     const hasCandidateGeo = c.lat != null && c.lng != null;
-    const withinGeoRange =
-      hasEntryGeo &&
-      hasCandidateGeo &&
-      haversineMeters(entryGeo!.lat!, entryGeo!.lng!, c.lat!, c.lng!) < GEO_MATCH_DISTANCE_M;
+    const distanceM =
+      hasEntryGeo && hasCandidateGeo
+        ? haversineMeters(entryGeo!.lat!, entryGeo!.lng!, c.lat!, c.lng!)
+        : undefined;
+    const withinGeoRange = distanceM !== undefined && distanceM < GEO_MATCH_DISTANCE_M;
 
-    const isMatch = score >= MATCH_THRESHOLD || (withinGeoRange && score >= GEO_MATCH_THRESHOLD);
+    let isMatch: boolean;
+    if (entryIsGeneric) {
+      // Name carries no identity — only identical name AT the same location counts.
+      isMatch = normalized === cNorm && withinGeoRange;
+    } else {
+      const nameMatch = score >= MATCH_THRESHOLD;
+      const geoMatch =
+        withinGeoRange &&
+        score >= GEO_MATCH_THRESHOLD &&
+        hasSignificantOverlap(entryTokens, getSignificantTokens(cNorm));
+      isMatch = nameMatch || geoMatch;
+    }
     if (!isMatch) continue;
 
     // Tiny bonus so a geo-confirmed candidate wins ties against a same-score
@@ -220,6 +287,8 @@ export function findBestMatch(
       best = c;
       bestScore = score;
       bestRank = rank;
+      bestGeo = withinGeoRange;
+      bestDistance = distanceM;
     }
   }
 
@@ -228,12 +297,19 @@ export function findBestMatch(
   // Resolve canonical: use existing canonical_id if set, otherwise the candidate itself
   const canonicalId = best.canonicalId ?? best.id;
 
+  // Generic-name matches are exact-equal AND co-located — that is name-grade
+  // evidence, not a weak geo guess.
+  const matchType: MatchResult['matchType'] =
+    bestScore >= MATCH_THRESHOLD ? 'name' : 'geo';
+
   return {
     candidateId: best.id,
     canonicalId,
     candidateName: best.name,
     candidateSource: best.source,
     score: bestScore,
+    matchType,
+    distanceM: bestDistance,
   };
 }
 

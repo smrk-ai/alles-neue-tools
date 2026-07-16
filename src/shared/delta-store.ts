@@ -301,6 +301,8 @@ function toCrossMatchResult(entry: DeltaMarkEntry, match: NonNullable<ReturnType
       name: match.candidateName,
       source: match.candidateSource,
       score: match.score,
+      matchType: match.matchType,
+      distanceM: match.distanceM,
     },
   };
 }
@@ -316,7 +318,7 @@ async function matchEntriesAgainstCandidates(
   entries: DeltaMarkEntry[],
   fetchCandidates: (cityId: string, category: string | undefined, source: string) => Promise<MatchCandidate[]>,
   filterSelf: boolean,
-): Promise<{ matched: CrossMatchResult[]; unmatched: DeltaMarkEntry[] }> {
+): Promise<{ matched: CrossMatchResult[]; geoSuspects: CrossMatchResult[]; unmatched: DeltaMarkEntry[] }> {
   const groups = new Map<string, { cityId: string; category: string | undefined; source: string }>();
   for (const entry of entries) {
     const key = buildCacheKey(entry);
@@ -330,7 +332,11 @@ async function matchEntriesAgainstCandidates(
     ),
   );
 
+  // Geo-only matches are kept OUT of `matched`: a false positive there would
+  // silently suppress a real new place. They are reported as suspects instead
+  // (the caller pushes the lead anyway, annotated with the suspicion).
   const matched: CrossMatchResult[] = [];
+  const geoSuspects: CrossMatchResult[] = [];
   const firstPassUnmatched: DeltaMarkEntry[] = [];
 
   for (const entry of entries) {
@@ -338,8 +344,10 @@ async function matchEntriesAgainstCandidates(
     if (filterSelf) candidates = candidates.filter((c) => c.id !== entry.sourceId);
 
     const match = findBestMatch(entry.name!, candidates, { lat: entry.lat, lng: entry.lng });
-    if (match) {
+    if (match && match.matchType === 'name') {
       matched.push(toCrossMatchResult(entry, match));
+    } else if (match) {
+      geoSuspects.push(toCrossMatchResult(entry, match));
     } else {
       firstPassUnmatched.push(entry);
     }
@@ -370,9 +378,11 @@ async function matchEntriesAgainstCandidates(
       if (filterSelf) candidates = candidates.filter((c) => c.id !== entry.sourceId);
 
       const match = findBestMatch(entry.name!, candidates, { lat: entry.lat, lng: entry.lng });
-      if (match) {
+      if (match && match.matchType === 'name') {
         matched.push(toCrossMatchResult(entry, match));
         fallbackHits++;
+      } else if (match) {
+        geoSuspects.push(toCrossMatchResult(entry, match));
       } else {
         unmatched.push(entry);
       }
@@ -383,7 +393,7 @@ async function matchEntriesAgainstCandidates(
     }
   }
 
-  return { matched, unmatched };
+  return { matched, geoSuspects, unmatched };
 }
 
 /**
@@ -392,7 +402,7 @@ async function matchEntriesAgainstCandidates(
  */
 export async function findNewWithCrossCheck(
   entries: DeltaMarkEntry[],
-): Promise<{ trulyNew: DeltaMarkEntry[]; crossMatched: CrossMatchResult[] }> {
+): Promise<{ trulyNew: DeltaMarkEntry[]; crossMatched: CrossMatchResult[]; geoSuspects: CrossMatchResult[] }> {
   // Step 1: Intra-source ID dedup
   const newIntraSource = await findNew(entries);
 
@@ -404,15 +414,24 @@ export async function findNewWithCrossCheck(
   const withoutName = newEntries.filter((e) => !e.name);
 
   if (withName.length === 0) {
-    return { trulyNew: newEntries, crossMatched: [] };
+    return { trulyNew: newEntries, crossMatched: [], geoSuspects: [] };
   }
 
   // Step 1b: Intra-source name dedup (Google Maps assigns multiple IDs to the same physical place)
-  const { matched: intraMatched, unmatched: afterIntraDedup } = await matchEntriesAgainstCandidates(
+  const intraResult = await matchEntriesAgainstCandidates(
     withName,
     (cityId, category, source) => getIntraSourceCandidates(cityId, source, category),
     true,
   );
+  const intraMatched = intraResult.matched;
+
+  // Geo-suspects are NOT suppressed: they continue through the pipeline as
+  // leads, annotated with the suspicion (flag mode until thresholds are proven).
+  const geoSuspects: CrossMatchResult[] = [...intraResult.geoSuspects];
+  const afterIntraDedup = [
+    ...intraResult.unmatched,
+    ...intraResult.geoSuspects.map((s) => s.entry),
+  ];
 
   // Step 2: Cross-source name matching (only if entries survived intra-source dedup)
   let crossMatched: CrossMatchResult[] = [];
@@ -425,23 +444,35 @@ export async function findNewWithCrossCheck(
       false,
     );
     crossMatched = crossResult.matched;
+    // An entry can be suspect in both passes — keep the first (intra) suspicion.
+    const alreadySuspect = new Set(geoSuspects.map((s) => s.entry.sourceId));
+    geoSuspects.push(...crossResult.geoSuspects.filter((s) => !alreadySuspect.has(s.entry.sourceId)));
     trulyNew.push(...crossResult.unmatched);
+    trulyNew.push(...crossResult.geoSuspects.map((s) => s.entry));
   } else {
     trulyNew.push(...afterIntraDedup);
   }
 
   const allMatched = [...intraMatched, ...crossMatched];
 
-  if (allMatched.length > 0) {
-    log.info(`Dedup: ${intraMatched.length} intra-source, ${crossMatched.length} cross-source matches. ${trulyNew.length} truly new.`);
+  if (allMatched.length > 0 || geoSuspects.length > 0) {
+    log.info(
+      `Dedup: ${intraMatched.length} intra-source, ${crossMatched.length} cross-source matches, ` +
+        `${geoSuspects.length} geo-suspects (flagged, not suppressed). ${trulyNew.length} continue as new.`,
+    );
     for (const m of allMatched) {
       log.info(
         `  ↳ ${m.entry.source} "${m.entry.name}" = ${m.matchedWith.source} "${m.matchedWith.name}" (score: ${m.matchedWith.score.toFixed(3)})`,
       );
     }
+    for (const s of geoSuspects) {
+      log.info(
+        `  ⚑ suspect: "${s.entry.name}" ≈ "${s.matchedWith.name}" (score: ${s.matchedWith.score.toFixed(3)}, ${s.matchedWith.distanceM?.toFixed(0) ?? '?'}m)`,
+      );
+    }
   }
 
-  return { trulyNew, crossMatched: allMatched };
+  return { trulyNew, crossMatched: allMatched, geoSuspects };
 }
 
 /**

@@ -129,6 +129,9 @@ export interface CrossMatchResult {
     name: string;
     source: string;
     score: number;
+    /** 'name' = safe auto-dedup; 'geo' = proximity guess, flag only. */
+    matchType: 'name' | 'geo';
+    distanceM?: number;
   };
 }
 
