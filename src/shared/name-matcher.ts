@@ -151,10 +151,23 @@ function hasSignificantOverlap(a: Set<string>, b: Set<string>): boolean {
   return false;
 }
 
+function isTokenSubset(a: Set<string>, b: Set<string>): boolean {
+  if (a.size === 0 || a.size > b.size) return false;
+  for (const t of a) {
+    if (!b.has(t)) return false;
+  }
+  return true;
+}
+
 function scoreNormalized(normA: string, normB: string): number {
   const jw = jaroWinkler(normA, normB);
-  const containment = normA.includes(normB) || normB.includes(normA) ? 0.05 : 0;
-  return Math.min(jw + containment, 1.0);
+  // Containment bonus on TOKEN level only — substring containment produced
+  // false positives like "azuMI COFFEE" ⊃ "mi coffee". Capped at 0.999 so a
+  // bonus can never fake an exact match (score 1.0 = strictly equal names).
+  const tokensA = new Set(normA.split(' '));
+  const tokensB = new Set(normB.split(' '));
+  const containment = isTokenSubset(tokensA, tokensB) || isTokenSubset(tokensB, tokensA) ? 0.05 : 0;
+  return Math.min(jw + containment, 0.999);
 }
 
 /**
@@ -253,11 +266,14 @@ export function findBestMatch(
   let bestGeo = false;
   let bestDistance: number | undefined;
 
+  let bestExact = false;
+
   for (const c of candidates) {
     const cNorm = c.nameNormalized ?? normalizeName(c.name);
     if (!cNorm) continue;
 
-    const score = normalized === cNorm ? 1.0 : scoreNormalized(normalized, cNorm);
+    const exact = normalized === cNorm;
+    const score = exact ? 1.0 : scoreNormalized(normalized, cNorm);
 
     const hasCandidateGeo = c.lat != null && c.lng != null;
     const distanceM =
@@ -267,9 +283,11 @@ export function findBestMatch(
     const withinGeoRange = distanceM !== undefined && distanceM < GEO_MATCH_DISTANCE_M;
 
     let isMatch: boolean;
-    if (entryIsGeneric) {
-      // Name carries no identity — only identical name AT the same location counts.
-      isMatch = normalized === cNorm && withinGeoRange;
+    const candidateIsGeneric = getSignificantTokens(cNorm).size === 0;
+    if (entryIsGeneric || candidateIsGeneric) {
+      // A generic name on EITHER side carries no identity ("Ca Phe", "Quán Phở"
+      // exist dozens of times) — only identical name AT the same location counts.
+      isMatch = exact && withinGeoRange;
     } else {
       const nameMatch = score >= MATCH_THRESHOLD;
       const geoMatch =
@@ -289,6 +307,7 @@ export function findBestMatch(
       bestRank = rank;
       bestGeo = withinGeoRange;
       bestDistance = distanceM;
+      bestExact = exact;
     }
   }
 
@@ -297,10 +316,13 @@ export function findBestMatch(
   // Resolve canonical: use existing canonical_id if set, otherwise the candidate itself
   const canonicalId = best.canonicalId ?? best.id;
 
-  // Generic-name matches are exact-equal AND co-located — that is name-grade
-  // evidence, not a weak geo guess.
+  // 'name' (= safe to auto-dedup) requires exact equality OR a strong score
+  // WITH geo confirmation. A high Jaro-Winkler score alone is not safe:
+  // prefix-heavy Vietnamese names score 0.92+ for genuinely different venues
+  // ("Bún Bò Lan" vs "Bún Bò Sen" ≈ 0.92, "Cô Gió" vs "Cô Bạn" ≈ 0.93).
+  // Everything else is a 'geo'/suspect match — flagged, never auto-dismissed.
   const matchType: MatchResult['matchType'] =
-    bestScore >= MATCH_THRESHOLD ? 'name' : 'geo';
+    bestExact || (bestScore >= MATCH_THRESHOLD && bestGeo) ? 'name' : 'geo';
 
   return {
     candidateId: best.id,

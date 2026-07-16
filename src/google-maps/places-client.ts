@@ -225,6 +225,18 @@ export async function getTieredDetailsBatch(
   return { details, tier: currentTier, queuedIds };
 }
 
+// Minimal Enterprise mask for the lead triage: rating fields are exactly what
+// makes the call Enterprise-billed, so nothing else is requested.
+const ENTERPRISE_RATING_FIELDS = 'id,rating,userRatingCount,businessStatus';
+
+/**
+ * Fetch ONLY rating/status for a place (Enterprise SKU, minimal mask).
+ * Caller must reserve Enterprise budget first (reserveBudget).
+ */
+export async function getPlaceRatingEnterprise(placeId: string): Promise<PlaceBasicDetails> {
+  return withRetry(() => getPlaceDetails(placeId, ENTERPRISE_RATING_FIELDS));
+}
+
 /**
  * Fetch Place Details on the Pro tier (name/category/location, no rating-count).
  * Used by the names backfill CLI — always Pro, never falls back to Enterprise.

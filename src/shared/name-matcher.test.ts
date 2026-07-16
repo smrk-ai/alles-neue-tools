@@ -199,15 +199,34 @@ describe('findBestMatch — generic-name guard', () => {
   });
 
   test('shared significant token still allows the intended geo assist', () => {
-    // Score ≈0.905 (between the two thresholds); "madam"/"khanh" are significant
-    // on both sides — legitimate name-drift catch, matched via proximity.
+    // Token-subset containment lifts the score above MATCH_THRESHOLD; combined
+    // with proximity that is name-grade evidence (safe to auto-dedup).
     const result = findBestMatch(
       'Madam Khanh Banh Mi',
       [candidateNamed('Madam Khanh The Banh Mi Queen')],
       near,
     );
     assert.ok(result, 'expected geo-assisted match via shared significant token');
-    assert.equal(result.matchType, 'geo');
+    assert.equal(result.matchType, 'name');
+  });
+
+  test('strong score WITHOUT geo confirmation is only a suspect, not safe', () => {
+    // "Bún Bò Lan" vs "Bún Bò Sen" — genuinely different venues, JW ≈0.92 via
+    // the shared prefix. Without co-location this must never auto-dedup.
+    const result = findBestMatch('Bún Bò Lan', [candidateNamed('Bún Bò Sen')]);
+    if (result) assert.equal(result.matchType, 'geo');
+  });
+
+  test('substring containment no longer inflates unrelated names', () => {
+    // "azuMI COFFEE" contains "mi coffee" as a substring but not on token level.
+    assert.ok(matchScore('Azumi Coffee', 'Mi Coffee') < 0.92);
+  });
+
+  test('generic CANDIDATE name is guarded symmetrically', () => {
+    // Candidate "Ca Phe" is purely generic — a specific entry must not be
+    // dismissed against it, no matter how high the prefix score is.
+    const result = findBestMatch('Cà phê 119', [candidateNamed('Ca Phe')], near);
+    assert.equal(result, null);
   });
 });
 
