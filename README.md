@@ -61,7 +61,7 @@ Migrations liegen in `sql/` und werden **manuell** im Supabase SQL-Editor ausgef
 | Slug | Quelle | Kosten | Läuft ohne weiteres Setup? |
 |------|--------|--------|----------------------------|
 | `google-maps` | Places API (H3-Grid-Scan + Details) | Text Search gratis, Details budgetiert | ✅ ja, braucht `GOOGLE_PLACES_API_KEY` |
-| `google-alerts` | 19 Google-Alerts-RSS-Feeds (EN + VI) | gratis | ✅ ja, RSS-URLs sind in `src/google-alerts/config.ts` hinterlegt |
+| `google-alerts` | 18 Google-Alerts-RSS-Feeds (EN + VI) | gratis | ✅ ja, RSS-URLs sind in `src/google-alerts/config.ts` hinterlegt |
 | `osm-monitor` | Overpass API | gratis | ✅ ja |
 | `sitemap-miner` | Booking.com + Agoda Sitemaps | gratis | ✅ ja (4 Quellen) |
 | `facebook-scout` | Meta Graph API Place Search | gratis | ❌ braucht gültigen `META_PAGE_ACCESS_TOKEN` |
