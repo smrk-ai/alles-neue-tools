@@ -21,6 +21,9 @@ elif [ "$MODE" = "dry_run" ]; then
 fi
 
 echo "▶ Starting tool: $SLUG (city: $CITY${MODE:+, mode: $MODE})"
+# Node-Version mitloggen: sonst laesst sich am Deploy nicht nachvollziehen,
+# welche Runtime Nixpacks aus engines.node aufgeloest hat.
+echo "  runtime: node $(node -v) | $(./node_modules/.bin/tsx --version 2>/dev/null | head -1)"
 
 if [ "$SLUG" = "run-all" ]; then
   exec ./node_modules/.bin/tsx src/cli/run-all.ts --city "$CITY" $MODE_FLAG
