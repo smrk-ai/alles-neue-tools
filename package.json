@@ -6,6 +6,7 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "google-maps": "tsx src/google-maps/index.ts",
     "facebook-scout": "tsx src/facebook-scout/index.ts",
@@ -27,17 +28,14 @@
     "db:types": "npx supabase gen types typescript --project-id yoezwzlqcvitkiwuuqvr > src/shared/database.types.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.101.1",
-    "@turf/boolean-point-in-polygon": "^7.3.4",
-    "@turf/distance": "^7.3.4",
-    "cheerio": "^1.2.0",
-    "dotenv": "^17.3.1",
-    "fast-xml-parser": "^5.5.9",
-    "h3-js": "^4.4.0"
+    "@supabase/supabase-js": "^2.112.4",
+    "dotenv": "^17.4.2",
+    "fast-xml-parser": "^5.11.1",
+    "h3-js": "^4.5.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.3"
   }
 }
