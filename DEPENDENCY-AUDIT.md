@@ -87,6 +87,63 @@ Einzeiler-Fix. Problem ist das fehlende CI — es gibt kein `.github/workflows/`
 
 ---
 
+## Status: alle fünf Schritte umgesetzt
+
+Stand 2026-08-30, Branch `claude/tools-dependency-check-vflu16`.
+Jeder Schritt ist ein eigener Commit; die ursprünglich geplanten Prompts
+stehen unten weiterhin als Referenz.
+
+| Schritt | Commit | Ergebnis |
+|---|---|---|
+| 1 — Sicherheit und Ballast | `133b488` | 5 Advisories → 0, Baum 79 → 52 Pakete, ein Lockfile |
+| 2 — Node-Version und Startpfad | `c49b17d` | `engines >=22 <25`, `@types/node ^22`, kein `npx` mehr |
+| 3 — Typecheck und CI | `881a5f0` | Typecheck erstmals grün, CI + Smoke-Test |
+| 4 — TypeScript 7 | `0a0fb10` | 5.9.3 → 7.0.2, Typecheck 2390 ms → 512 ms |
+| 5 — Infrastruktur pinnen | `afd94b8` | Docker-Images und Supabase-CLI festgenagelt |
+| Nachzug | `a782e32` | tsx 4.23.13 (während der Arbeit erschienen) |
+
+**Verifikation, unabhängig auf GitHub Actions:** `pnpm install --frozen-lockfile`,
+`pnpm typecheck`, `pnpm audit --audit-level=high`, `pnpm run smoke` — grün auf
+Node 24.19.0.
+
+**Lokal zusätzlich geprüft:** Clean-Room-Install nur aus dem Lockfile,
+Smoke-Test auf Node 22.22.2 *und* 24.20.0, `entrypoint.sh` aus fremdem
+Arbeitsverzeichnis gestartet, TS-7-Emit (67 `.js` + 67 `.d.ts`), und eine
+Gegenprobe, dass TS 7 einen absichtlich eingebauten Typfehler auch wirklich meldet.
+
+### Was im Verlauf zusätzlich gefunden wurde
+
+- **Die Lockfile-Divergenz war größer als gemeldet:** nicht ein Paket, sondern
+  **neun** — darunter `@supabase/supabase-js` 2.98.0 gegen 2.101.1 und
+  `undici` 7.22.0 gegen 7.24.7.
+- **`engines: ">=20"` hieß nie „läuft auf Node 20".** Nixpacks löst das Feld über
+  `node_semver` auf und nimmt daraus den *höchsten* verfügbaren even/LTS-Major —
+  `engines.node` schlägt dabei `.nvmrc`. Die Range war also nach oben offen und
+  wäre bei jedem Nixpacks-Update stillschweigend weitergewandert. Erst die
+  Obergrenze `<25` bindet den Build fest.
+- **Node 20 ist nicht nur EOL, sondern von einer Abhängigkeit abgekündigt:**
+  `@supabase/supabase-js` 2.112.4 warnt dort zur Laufzeit selbst.
+- **Zwei Entrypoints starteten beim blossen Import** (`facebook-scout/quick-entry.ts`,
+  `shared/test-foundation.ts`) — vom neuen Smoke-Test in seinem allerersten Lauf
+  gefunden und auf das Idiom der übrigen `index.ts` gezogen.
+- **`sockpuppetbrowser` liess sich nicht sinnvoll per Tag pinnen:** neuester
+  Versions-Tag `0.0.3` vom 2025-08-20, `:latest` aber vom 2026-08-26. Ein Tag-Pin
+  hätte ein Jahr Fixes zurückgenommen — deshalb Digest-Pin.
+
+### Bewusst offen geblieben
+
+`@types/node` steht auf `^22.20.1`, nicht auf `26.4.0`. Das ist kein Rückstand,
+sondern die Untergrenze von `engines: ">=22 <25"`: so kann kein Code eingecheckt
+werden, der nur auf Node 24 existiert, aber auf 22 fehlt. `pnpm outdated` wird
+diese Zeile dauerhaft anzeigen.
+
+**Noch nicht verifiziert:** der Railway-Deploy selbst. `engines`, `.nvmrc` und
+`entrypoint.sh` sind gegen die Nixpacks-Auflösungslogik geprüft, aber ein echter
+Deploy lief in dieser Session nicht — dafür fehlte der Zugang. Das ist der eine
+Punkt, der vor dem Merge am laufenden System nachgezogen werden sollte.
+
+---
+
 ## Plan — fünf einzeln abfeuerbare Schritte
 
 Jeder Schritt: eigener Branch, eigener PR, eigene Prüfung.
