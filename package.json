@@ -26,7 +26,7 @@
     "smoke": "tsx src/cli/smoke.ts",
     "backfill-names": "tsx src/cli/backfill-normalized-names.ts",
     "test-foundation": "tsx src/shared/test-foundation.ts",
-    "db:types": "npx supabase gen types typescript --project-id yoezwzlqcvitkiwuuqvr > src/shared/database.types.ts"
+    "db:types": "npx supabase@2.116.0 gen types typescript --project-id yoezwzlqcvitkiwuuqvr > src/shared/database.types.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

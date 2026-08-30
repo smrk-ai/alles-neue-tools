@@ -13,7 +13,12 @@
 
 services:
   changedetection:
-    image: ghcr.io/dgtlmoon/changedetection.io:latest
+    # Gepinnt: :latest wurde sonst bei jedem "docker compose pull" still ausgetauscht.
+    # 0.55.8 (Stand 2026-08-30) ist identisch mit dem damaligen :latest
+    # (sha256:5438423d5e906eff4e8f7886823482ad23f472bf7b8530ccaca89fb48c337882).
+    # Aktualisieren: neuen Tag unter
+    # https://github.com/dgtlmoon/changedetection.io/releases waehlen und hier eintragen.
+    image: ghcr.io/dgtlmoon/changedetection.io:0.55.8
     container_name: changedetection
     hostname: changedetection
     restart: unless-stopped
@@ -31,7 +36,13 @@ services:
 
   # Headless Browser fuer JavaScript-Rendering
   browser-chrome:
-    image: dgtlmoon/sockpuppetbrowser:latest
+    # Per Digest gepinnt statt per Tag: der neueste Versions-Tag dieses Images ist
+    # 0.0.3 von 2025-08-20, waehrend :latest zuletzt am 2026-08-26 neu gebaut wurde.
+    # Ein Pin auf 0.0.3 wuerde also ein Jahr Fixes zuruecknehmen; der Digest haelt
+    # genau den Stand fest, der aktuell hinter :latest steht (linux/amd64, linux/arm64).
+    # Aktualisieren: docker pull dgtlmoon/sockpuppetbrowser:latest, dann
+    # docker inspect --format='{{index .RepoDigests 0}}' dgtlmoon/sockpuppetbrowser:latest
+    image: dgtlmoon/sockpuppetbrowser@sha256:f166a963b550c29af465c2fac518212e7e3a75f14f0d2b840cf4b79677295764
     container_name: browser-chrome
     hostname: browser-chrome
     restart: unless-stopped
