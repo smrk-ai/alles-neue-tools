@@ -4,7 +4,8 @@ Discovery-Tools für **New Around** (allesneue). Jedes Tool sucht in einer Quell
 neu eröffneten Orten (Restaurants, Cafés, Bars, Hotels) in Hội An und Đà Nẵng und
 schiebt gefundene Leads in die Pipeline des Web-Repos.
 
-> Stand: v1.44 · Diese Datei ist die Referenz, wenn du länger nicht am Projekt warst.
+> Stand: v1.44 + Dependency-Audit (PR #1) · Diese Datei ist die Referenz, wenn du
+> länger nicht am Projekt warst.
 
 ---
 
@@ -110,15 +111,30 @@ Der Admin-Button „Run Now" triggert über die Railway-API
 ### Lokal
 
 ```bash
-pnpm install                                   # pnpm-lock.yaml ist das gepflegte Lockfile
+pnpm install                                   # pnpm-lock.yaml ist das einzige Lockfile
 cp .env.example .env                           # Keys eintragen
 
 pnpm run run-tool -- --slug google-maps --city hoi-an --dry-run
 pnpm run run-all -- --only google-alerts,osm-monitor
 pnpm run q                                     # manueller Einzeleintrag
 pnpm run import                                # Bulk-JSON-Import
-pnpm run test-foundation                       # Smoke-Test: DB, Config, Pipeline
+
+pnpm run typecheck                             # muss fehlerfrei sein
+pnpm run smoke                                 # laedt alle Module, prueft die Deps — ohne Netz
+pnpm run test-foundation                       # gegen die echte DB: Config, Pipeline
 ```
+
+### Toolchain
+
+pnpm ist der einzige Paketmanager (`packageManager` in der `package.json` pinnt die
+Version). `engines` steht auf `>=22 <25` — die Obergrenze ist Absicht: Nixpacks nimmt
+aus der Range den hoechsten verfuegbaren LTS-Major, ohne sie wuerde der Build
+mitwandern, sobald Nixpacks eine neue Major aufnimmt. `@types/node` bleibt bewusst
+auf `^22`, also auf der Untergrenze, damit kein Code eingecheckt wird, der nur auf
+Node 24 existiert. TypeScript ist auf 7.x.
+
+`.github/workflows/ci.yml` laeuft bei jedem Push und PR: `install --frozen-lockfile`,
+`typecheck`, `audit --audit-level=high`, `smoke`.
 
 ### Schutzmechanismen
 
@@ -130,16 +146,23 @@ pnpm run test-foundation                       # Smoke-Test: DB, Config, Pipelin
 
 ---
 
-## 4. Bekannte Baustellen (Stand v1.44)
+## 4. Bekannte Baustellen
 
-- `npm run typecheck` schlägt fehl: `src/cli/push-baseline-places.ts:45` —
-  `mapCategory(types)` bekommt `string[] | undefined`.
-- `package-lock.json` ist **nicht** synchron zu `package.json` → `npm ci` bricht ab.
-  Es existieren zwei Lockfiles; `pnpm-lock.yaml` ist der gepflegte Stand.
-- `tsx` und `typescript` stehen in `devDependencies`, `entrypoint.sh` ruft sie aber
-  zur Laufzeit über `npx` auf — bei einem Prod-Install ohne devDeps ist das fragil.
 - `changedetection`: alle 10 Watch-UUIDs sind leer → Tool kann nicht laufen.
 - `facebook-scout` / `instagram-scout`: Meta-Tokens abgelaufen.
 - Google-Places-Foto-Referenzen werden abgerufen und bezahlt (`photos.name` im
   Field-Mask), aber beim Lead nur als `photo_count` gespeichert — die URLs gehen
   verloren.
+
+### Erledigt mit PR #1 (Dependency-Audit)
+
+Die frühere Fassung dieses Abschnitts nannte drei Punkte, die inzwischen behoben
+sind: der Typecheck-Fehler in `push-baseline-places.ts`, das zweite Lockfile
+(`package-lock.json` ist gelöscht), und der `npx`-Aufruf im `entrypoint.sh`
+(nutzt jetzt `./node_modules/.bin/tsx`). Dazu sind fünf Schwachstellen im
+Abhängigkeitsbaum geschlossen und drei nie importierte Runtime-Pakete entfernt
+worden. Details in `DEPENDENCY-AUDIT.md`.
+
+Nicht verifiziert ist dort ein Punkt geblieben: der Railway-Deploy selbst — die
+Railway-API war aus der Arbeitsumgebung nicht erreichbar. Im Deploy-Log steht
+seitdem in Zeile 2 die aufgelöste Runtime (`runtime: node v… | tsx v…`).
