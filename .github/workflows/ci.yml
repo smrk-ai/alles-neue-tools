@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: pnpm bereitstellen
+        uses: pnpm/action-setup@v4
+
+      - name: Node bereitstellen
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Abhaengigkeiten installieren
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Audit
+        run: pnpm audit --audit-level=high
+
+      - name: Laufzeit-Smoke-Test
+        env:
+          PIPELINE_API_URL: https://ci.invalid/pipeline
+          PIPELINE_API_KEY: ci
+          TOOL_RUNS_API_URL: https://ci.invalid/runs
+          TOOL_API_KEY: ci
+          SUPABASE_URL: https://ci.invalid
+          SUPABASE_SERVICE_ROLE_KEY: ci
+          GOOGLE_PLACES_API_KEY: ci
+        run: pnpm run smoke

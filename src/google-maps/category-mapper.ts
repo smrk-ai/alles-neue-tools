@@ -66,7 +66,8 @@ const TYPE_MAPPING: Record<string, CategoryGuess> = {
  * Map a Google Places types array to our category.
  * Returns the first match (types are ordered by relevance).
  */
-export function mapCategory(types: string[]): CategoryGuess | null {
+export function mapCategory(types?: string[]): CategoryGuess | null {
+  if (!types) return null;
   for (const type of types) {
     if (TYPE_MAPPING[type]) return TYPE_MAPPING[type];
   }

@@ -120,7 +120,9 @@ async function main() {
   if (failed > 0) process.exit(1);
 }
 
-main().catch((err) => {
-  console.error('Test failed with error:', err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''))) {
+  main().catch((err) => {
+    console.error('Test failed with error:', err);
+    process.exit(1);
+  });
+}
