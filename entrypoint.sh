@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Pfade relativ zum Skript aufloesen, nicht zum aktuellen Arbeitsverzeichnis
+cd "$(dirname "$0")"
+
 SLUG="${TOOL_SLUG:-$RAILWAY_SERVICE_NAME}"
 
 if [ -z "$SLUG" ] || [ "$SLUG" = "alles-neue-tools" ]; then
@@ -20,7 +23,7 @@ fi
 echo "▶ Starting tool: $SLUG (city: $CITY${MODE:+, mode: $MODE})"
 
 if [ "$SLUG" = "run-all" ]; then
-  exec npx tsx src/cli/run-all.ts --city "$CITY" $MODE_FLAG
+  exec ./node_modules/.bin/tsx src/cli/run-all.ts --city "$CITY" $MODE_FLAG
 else
-  exec npx tsx src/cli/run-tool.ts --slug "$SLUG" --city "$CITY" $MODE_FLAG
+  exec ./node_modules/.bin/tsx src/cli/run-tool.ts --slug "$SLUG" --city "$CITY" $MODE_FLAG
 fi
