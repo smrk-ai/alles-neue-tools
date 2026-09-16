@@ -1,3 +1,17 @@
+# ACHTUNG — diese Datei hat ein Ablaufdatum: 01.12.2026
+#
+# Railway ersetzt Config as Code (railway.toml / railway.json) durch
+# Infrastructure as Code (.railway/railway.ts). Ab dem 01.12.2026 wird diese
+# Datei nicht mehr gelesen; seit dem 28.08.2026 koennen neue Projekte
+# Config as Code gar nicht mehr aktivieren.
+# Migration: `railway config migrate --apply` (Railway CLI).
+#
+# Ausserdem ist `builder = "nixpacks"` seit dem 04.03.2026 deprecated —
+# Railpack ist Default-Builder, Nixpacks nur noch im Maintenance-Modus.
+#
+# Beides mit Aufwandsschaetzung und Stolpersteinen in der TODO.md des
+# Web-Repos (allesneue), Abschnitt "Railway — Deadline 01.12.2026".
+
 [build]
 builder = "nixpacks"
 

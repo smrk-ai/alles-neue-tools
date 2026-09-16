@@ -108,6 +108,13 @@ und `restartPolicyType = never`. Gesteuert wird über Env-Variablen:
 Der Admin-Button „Run Now" triggert über die Railway-API
 (`config.railway_instance_id` im jeweiligen `tool_configs`-Eintrag).
 
+> **Deadline 01.12.2026:** `railway.toml` (Config as Code) wird ab dem
+> 01.12.2026 nicht mehr gelesen — Railway ersetzt es durch
+> `.railway/railway.ts` (Infrastructure as Code). Zusätzlich ist der hier
+> gesetzte `builder = "nixpacks"` seit dem 04.03.2026 deprecated (Railpack ist
+> Default). Aufwandsschätzung, Reihenfolge und Stolpersteine stehen in der
+> `TODO.md` des Web-Repos, Abschnitt „Railway — Deadline 01.12.2026".
+
 ### Lokal
 
 ```bash
