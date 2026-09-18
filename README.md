@@ -89,7 +89,56 @@ Homestays werden erkannt (`homestay-filter.ts`), in `known_places` behalten, abe
 
 ---
 
-## 3. Betrieb
+## 3. Live-Stand (abgefragt 18.09.2026)
+
+> Direkt aus Supabase (`tool_configs`, `tool_runs`, `pipeline_leads`, `places`,
+> `known_places`). Abschnitt 2 sagt, ob ein Tool *laufen koennte* — dieser hier
+> sagt, ob es *laeuft*.
+
+**Von 11 Eintraegen in `tool_configs` ist genau einer aktiv.**
+
+| Slug | aktiv | Zeitplan | letzter Lauf | Befund |
+|------|-------|----------|--------------|--------|
+| `google-maps-hoi-an` | ✅ | `0 6 * * 1,3,5` | 16.09.2026 | laeuft zuverlaessig, 13 Laeufe/30 Tage ohne Fehler |
+| `google-alerts` | ❌ | `0 */6 * * *` | 30.08.2026 | letzter Lauf fand 58 neue Eintraege, danach abgeschaltet |
+| `osm-monitor` | ❌ | `0 4 * * 0` | 14.07.2026 | `Overpass API error 406` |
+| `sitemap-miner` | ❌ | `0 3 * * *` | 05.06.2026 | Modus jetzt `baseline_only` (stand auf `baseline`, wurde ignoriert) |
+| `google-maps-da-nang` | ❌ | `0 7 * * 2,6` | nie | konfiguriert inkl. Railway-Service, nie gestartet |
+| `changedetection` | ❌ | `0 5 * * *` | 09.03.2026 | Watch-UUIDs leer, kein Railway-Service |
+| `facebook-scout` / `instagram-scout` | ❌ | — | nie | Meta-Tokens fehlen |
+| `google-maps` | ❌ | — | 21.06.2026 | alter Basis-Slug vor der per-City-Umstellung, Karteileiche |
+| `quick-entry` / `prompt-import` | ❌ | — | nie | CLI, wird nicht ueber `tool_runs` getrackt |
+
+### Der Trichter
+
+| Stufe | Anzahl |
+|-------|--------|
+| `known_places` gesamt | 24.206 |
+| davon als Lead eingereicht | 1.149 |
+| offen, Status `new` | 465 |
+| jemals konvertiert | 2 (zuletzt 16.04.2026) |
+| oeffentlich im Feed | 13 (neuester 15.05.2026) |
+
+Der Zufluss funktioniert, der Abfluss steht seit vier Monaten. Weitere Tools
+anzuschalten vergroessert den Stapel — es fuellt nicht den Feed.
+
+### API-Budget
+
+Unkritisch. September: 40/900 Enterprise-Calls, 7.029 gratis Text-Searches.
+Einziger Ausrutscher war Juni 2026 mit 1.730 Enterprise-Calls gegen 1.000
+Freikontingent (~18,25 $). 1.417 Google-Maps-Orte in Hoi An sind als bekannt
+markiert, aber ohne Details.
+
+### Dokumentation
+
+Research, Roadmaps und Plaene liegen im Vault: `smrk-ai/vaultone`, Ordner
+`Projekte/alles-neue/`. Dort steht auch die urspruengliche
+`Research/Tools/00_UEBERSICHT_DISCOVERY_TOOLS.md` und die Master-Roadmap. Aus
+deren Phase 5 fehlen bis heute `vn-platforms`, `foody-monitor` und `job-monitor`.
+
+---
+
+## 4. Betrieb
 
 ### Railway
 
@@ -136,6 +185,20 @@ Node 24 existiert. TypeScript ist auf 7.x.
 `.github/workflows/ci.yml` laeuft bei jedem Push und PR: `install --frozen-lockfile`,
 `typecheck`, `audit --audit-level=high`, `smoke`.
 
+### Run-Modi
+
+`tool_configs.config.run_config.mode` kennt genau drei Werte:
+
+| Modus | Wirkung |
+|-------|---------|
+| `normal` (oder nicht gesetzt) | Regelbetrieb: finden, Delta pruefen, in die Pipeline pushen |
+| `baseline_only` | **Punkt null aufbauen.** Gefundene Orte werden nur in `known_places` registriert — kein Lead, kein Feed-Eintrag. Laeuft so lange, bis der Bestand vollstaendig eingesammelt ist; danach auf `normal` stellen, und ab dann gilt jeder Fund als echte Neueroeffnung. |
+| `dry_run` | Nur loggen, nichts schreiben |
+
+`baseline_only` unterstuetzen `google-maps` und `sitemap-miner`. Ein unbekannter
+Wert wird nicht mehr still verworfen, sondern geloggt:
+`Unknown run_config.mode "..." — ignored, running in normal mode`.
+
 ### Schutzmechanismen
 
 - **Lock**: läuft derselbe Slug seit < 20 min mit Status `running`, bricht der Lauf ab.
@@ -146,7 +209,7 @@ Node 24 existiert. TypeScript ist auf 7.x.
 
 ---
 
-## 4. Bekannte Baustellen
+## 5. Bekannte Baustellen
 
 - `changedetection`: alle 10 Watch-UUIDs sind leer → Tool kann nicht laufen.
 - `facebook-scout` / `instagram-scout`: Meta-Tokens abgelaufen.

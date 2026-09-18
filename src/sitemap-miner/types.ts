@@ -42,6 +42,7 @@ export interface EnrichedEntry {
 export interface SitemapMinerOptions {
   city: string;                  // 'hoi-an' | 'da-nang' | 'all'
   dryRun: boolean;
+  baselineOnly: boolean;         // Collect into known_places only, no pipeline push
   verbose: boolean;
   configId?: string;             // Optional: run only a specific config
 }
