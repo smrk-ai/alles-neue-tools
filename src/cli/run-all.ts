@@ -15,7 +15,7 @@ import { getSupabaseClient } from '../shared/supabase-client.js';
 import { getCityBySlug, getAllCities, loadCities } from '../shared/city-config.js';
 import { createLogger } from '../shared/logger.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
-import { createToolRun, updateToolRun, BaseTool } from '../shared/tool-runner.js';
+import { createToolRun, updateToolRun, warnOnUnknownRunMode, BaseTool } from '../shared/tool-runner.js';
 
 const log = createLogger('run-all');
 
@@ -146,6 +146,7 @@ async function main() {
 
       // Extract per-tool run_config from DB, merge with CLI args
       const runCfg = (toolConfig.config?.run_config as { city?: string; mode?: string }) || {};
+      warnOnUnknownRunMode(toolConfig.slug, runCfg.mode);
       const toolCity = (opts.city === 'all' && runCfg.city) ? runCfg.city : opts.city;
       const toolDryRun = opts.dryRun || runCfg.mode === 'dry_run';
       const toolBaselineOnly = runCfg.mode === 'baseline_only';

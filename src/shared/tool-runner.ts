@@ -50,6 +50,25 @@ async function isToolAlreadyRunning(toolSlug: string): Promise<boolean> {
   }
 }
 
+// --- Run Modes ---
+
+/** Accepted values for tool_configs.config.run_config.mode. */
+export const RUN_MODES = ['normal', 'dry_run', 'baseline_only'] as const;
+export type RunMode = (typeof RUN_MODES)[number];
+
+/**
+ * Warn when tool_configs carries a mode the runners do not understand.
+ * Unknown values used to be dropped without a word, so a tool could sit on
+ * "baseline" in the admin UI while every run actually went out in normal mode.
+ */
+export function warnOnUnknownRunMode(toolSlug: string, mode: string | undefined): void {
+  if (!mode || (RUN_MODES as readonly string[]).includes(mode)) return;
+  toolRunLog.warn(
+    `Unknown run_config.mode "${mode}" for "${toolSlug}" — ignored, running in normal mode. ` +
+      `Expected one of: ${RUN_MODES.join(', ')}`,
+  );
+}
+
 export async function createToolRun(toolSlug: string): Promise<string | null> {
   try {
     const res = await fetch(config.toolRuns.apiUrl, {

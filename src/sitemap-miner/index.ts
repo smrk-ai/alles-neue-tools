@@ -18,6 +18,7 @@ const TOOL_SLUG = 'sitemap-miner';
 
 export class SitemapMinerTool extends BaseTool {
   private configId?: string;
+  private baselineOnly: boolean;
 
   constructor(options: SitemapMinerOptions) {
     super({
@@ -26,6 +27,7 @@ export class SitemapMinerTool extends BaseTool {
       dryRun: options.dryRun,
     });
     this.configId = options.configId;
+    this.baselineOnly = options.baselineOnly;
   }
 
   async run(_city: CityConfig): Promise<ToolRunReport> {
@@ -124,47 +126,60 @@ export class SitemapMinerTool extends BaseTool {
 
       totalNew += trulyNewEntries.length;
 
-      // Step 2e: Build leads only for truly new entries (exclude homestays from pipeline)
-      const trulyNewSourceIds = new Set(trulyNewEntries.map((e) => e.sourceId));
-      const trulyNewEnriched = enriched.filter((e) => {
-        const sid = extractSourceId(e.url);
-        return trulyNewSourceIds.has(sid);
-      });
-
-      const nonHomestays: typeof trulyNewEnriched = [];
-      let homestayCount = 0;
-      for (const e of trulyNewEnriched) {
-        if (isHomestayByName(e.name)) {
-          homestayCount++;
-        } else {
-          nonHomestays.push(e);
-        }
-      }
-      if (homestayCount > 0) {
-        this.log.info(`Skipping ${homestayCount} homestays for ${source.id} (kept in known_places, not pushed)`);
-      }
-
-      const leads = buildLeads(nonHomestays, source.id);
-
-      // Step 2f: Push to pipeline (only truly new, not cross-matched)
+      // Step 2e/2f: Build leads and push — skipped entirely in baseline mode.
+      // Baseline establishes the "point zero" stock: every place that already
+      // exists is recorded in known_places so later runs can tell a genuine new
+      // opening from something that was there all along. Those entries are not
+      // discoveries, so they never reach the pipeline or the feed.
+      let leads: ReturnType<typeof buildLeads> = [];
       let pushResults: Awaited<ReturnType<typeof pushLeads>> = [];
-      if (!this.dryRun && leads.length > 0) {
-        pushResults = await pushLeads(leads);
-        const pushed = pushResults.filter((r) => r.success).length;
-        totalPushed += pushed;
-        this.log.info(`Pushed ${pushed}/${leads.length} leads for: ${source.id}`);
-        if (pushed < leads.length) {
-          this.log.warn(`${leads.length - pushed} pushes failed for: ${source.id} — will retry next run`);
-        }
-      } else if (this.dryRun && leads.length > 0) {
-        this.log.info(`[DRY RUN] Would push ${leads.length} leads for: ${source.id}`);
-        for (const lead of leads) {
-          this.log.info(`  → ${lead.name ?? '(unnamed)'} | ${lead.category_guess ?? '?'} | ${lead.source_url}`);
-        }
-      }
 
-      if (this.dryRun && crossMatches.length > 0) {
-        this.log.info(`[DRY RUN] ${crossMatches.length} cross-source matches (would skip pipeline push)`);
+      if (this.baselineOnly) {
+        this.log.info(
+          `Baseline mode: registering ${trulyNewEntries.length} entries as known for ${source.id} (no pipeline push)`,
+        );
+      } else {
+        // Step 2e: Build leads only for truly new entries (exclude homestays from pipeline)
+        const trulyNewSourceIds = new Set(trulyNewEntries.map((e) => e.sourceId));
+        const trulyNewEnriched = enriched.filter((e) => {
+          const sid = extractSourceId(e.url);
+          return trulyNewSourceIds.has(sid);
+        });
+
+        const nonHomestays: typeof trulyNewEnriched = [];
+        let homestayCount = 0;
+        for (const e of trulyNewEnriched) {
+          if (isHomestayByName(e.name)) {
+            homestayCount++;
+          } else {
+            nonHomestays.push(e);
+          }
+        }
+        if (homestayCount > 0) {
+          this.log.info(`Skipping ${homestayCount} homestays for ${source.id} (kept in known_places, not pushed)`);
+        }
+
+        leads = buildLeads(nonHomestays, source.id);
+
+        // Step 2f: Push to pipeline (only truly new, not cross-matched)
+        if (!this.dryRun && leads.length > 0) {
+          pushResults = await pushLeads(leads);
+          const pushed = pushResults.filter((r) => r.success).length;
+          totalPushed += pushed;
+          this.log.info(`Pushed ${pushed}/${leads.length} leads for: ${source.id}`);
+          if (pushed < leads.length) {
+            this.log.warn(`${leads.length - pushed} pushes failed for: ${source.id} — will retry next run`);
+          }
+        } else if (this.dryRun && leads.length > 0) {
+          this.log.info(`[DRY RUN] Would push ${leads.length} leads for: ${source.id}`);
+          for (const lead of leads) {
+            this.log.info(`  → ${lead.name ?? '(unnamed)'} | ${lead.category_guess ?? '?'} | ${lead.source_url}`);
+          }
+        }
+
+        if (this.dryRun && crossMatches.length > 0) {
+          this.log.info(`[DRY RUN] ${crossMatches.length} cross-source matches (would skip pipeline push)`);
+        }
       }
 
       // Step 2g: Mark entries as known (all truly new, including homestays)
@@ -211,8 +226,13 @@ export class SitemapMinerTool extends BaseTool {
 }
 
 /** Factory for orchestrator usage */
-export function createTool(options: { city: string; dryRun?: boolean; configId?: string }): SitemapMinerTool {
-  return new SitemapMinerTool({ ...options, dryRun: options.dryRun ?? false, verbose: false });
+export function createTool(options: { city: string; dryRun?: boolean; baselineOnly?: boolean; configId?: string }): SitemapMinerTool {
+  return new SitemapMinerTool({
+    ...options,
+    dryRun: options.dryRun ?? false,
+    baselineOnly: options.baselineOnly ?? false,
+    verbose: false,
+  });
 }
 
 // --- CLI Entry Point ---
@@ -228,6 +248,7 @@ function parseArgs(): SitemapMinerOptions {
   return {
     city: flagValue('--city') ?? 'all',
     dryRun: args.includes('--dry-run'),
+    baselineOnly: args.includes('--baseline-only'),
     verbose: args.includes('--verbose'),
     configId: flagValue('--config'),
   };

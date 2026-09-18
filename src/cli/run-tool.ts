@@ -11,7 +11,7 @@ import 'dotenv/config';
 import { getCityBySlug, getAllCities, loadCities } from '../shared/city-config.js';
 import { getSupabaseClient } from '../shared/supabase-client.js';
 import type { CityConfig, ToolRunReport } from '../shared/types.js';
-import { BaseTool } from '../shared/tool-runner.js';
+import { BaseTool, warnOnUnknownRunMode } from '../shared/tool-runner.js';
 
 // --- Tool Registry ---
 
@@ -121,6 +121,8 @@ async function main() {
   }
 
   const effectiveCity = (opts.city === 'all' && dbConfig.city) ? dbConfig.city : opts.city;
+  warnOnUnknownRunMode(configSlug, dbConfig.mode);
+
   const effectiveDryRun = opts.dryRun || dbConfig.mode === 'dry_run';
   const effectiveBaselineOnly = opts.baselineOnly || dbConfig.mode === 'baseline_only';
 
