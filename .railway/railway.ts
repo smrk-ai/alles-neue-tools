@@ -62,19 +62,30 @@ interface ToolService {
   mode?: 'baseline_only' | 'dry_run';
   /** Cron in UTC. Railway rechnet keine Zeitzonen um. */
   cron: string;
+  /**
+   * Build-Backend. Default `NIXPACKS` — bewusst, siehe DEFAULT_BUILDER.
+   * Pro Service umschaltbar, damit der Railpack-Umstieg einen Service nach
+   * dem anderen nehmen kann statt alle fuenf auf einmal.
+   */
+  builder?: 'NIXPACKS' | 'RAILPACK';
 }
 
-function tool({ name, slug, city = 'all', mode, cron }: ToolService) {
+/**
+ * Diese Migration tauscht das Config-Format, nicht den Builder. Der Wechsel
+ * auf Railpack (Nixpacks-Nachfolger) ist ein eigener Schritt mit eigenem
+ * Deploy — sonst ist bei einem roten Build nicht zu unterscheiden, welche der
+ * beiden Aenderungen ihn gebrochen hat.
+ *
+ * Achtung beim Umstellen: Railpack loest `engines.node` anders auf als
+ * Nixpacks (es reicht die Range woertlich an mise weiter). Der Plan dazu,
+ * inklusive Kanarienvogel-Service und Abbruchkriterium, steht in RAILWAY.md.
+ */
+const DEFAULT_BUILDER = 'NIXPACKS' as const;
+
+function tool({ name, slug, city = 'all', mode, cron, builder = DEFAULT_BUILDER }: ToolService) {
   return service(name, {
     source: github(REPO),
-    build: {
-      // Bewusst NIXPACKS, nicht RAILPACK: diese Migration tauscht das
-      // Config-Format, nicht den Builder. Der Wechsel auf Railpack
-      // (Nixpacks-Nachfolger) ist ein eigener Schritt mit eigenem Deploy —
-      // sonst ist bei einem roten Build nicht zu unterscheiden, welche der
-      // beiden Aenderungen ihn gebrochen hat. Siehe RAILWAY.md.
-      builder: 'NIXPACKS',
-    },
+    build: { builder },
     deploy: {
       startCommand: 'bash entrypoint.sh',
       // Einmal-Jobs: ein Neustart wuerde den Lauf doppelt ausfuehren.
