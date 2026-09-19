@@ -14,11 +14,14 @@
 services:
   changedetection:
     # Gepinnt: :latest wurde sonst bei jedem "docker compose pull" still ausgetauscht.
-    # 0.55.8 (Stand 2026-08-30) ist identisch mit dem damaligen :latest
-    # (sha256:5438423d5e906eff4e8f7886823482ad23f472bf7b8530ccaca89fb48c337882).
+    # 0.60.6 (Release vom 2026-09-14) ist der neueste Versions-Tag; davor stand
+    # hier 0.55.8 vom 2026-08-30.
+    # Der Digest ist bewusst nicht mitgepinnt — er liesse sich hier nicht
+    # verifizieren. Vor dem naechsten Start einmal "docker compose pull" laufen
+    # lassen und die UI kurz gegenchecken.
     # Aktualisieren: neuen Tag unter
     # https://github.com/dgtlmoon/changedetection.io/releases waehlen und hier eintragen.
-    image: ghcr.io/dgtlmoon/changedetection.io:0.55.8
+    image: ghcr.io/dgtlmoon/changedetection.io:0.60.6
     container_name: changedetection
     hostname: changedetection
     restart: unless-stopped

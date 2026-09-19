@@ -29,11 +29,11 @@
     "backfill-missing-names": "tsx src/cli/backfill-names.ts",
     "test-foundation": "tsx src/shared/test-foundation.ts",
     "test": "tsx --test src/shared/*.test.ts",
-    "db:types": "npx supabase@2.116.0 gen types typescript --project-id yoezwzlqcvitkiwuuqvr > src/shared/database.types.ts"
+    "db:types": "npx supabase@2.117.0 gen types typescript --project-id yoezwzlqcvitkiwuuqvr > src/shared/database.types.ts"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.4",
-    "@turf/distance": "^7.3.4",
+    "@supabase/supabase-js": "^2.116.0",
+    "@turf/distance": "^7.4.0",
     "dotenv": "^17.4.2",
     "fast-xml-parser": "^5.11.1",
     "h3-js": "^4.5.0",
