@@ -26,34 +26,87 @@ abgekuendigte Format in anderer Syntax und stirbt am selben Tag.
 |-------|-------|
 | `.railway/railway.ts` | die neue Quelle der Wahrheit — noch nicht angewendet |
 | `.railway/tsconfig.json` | damit die Datei ueberhaupt geprueft wird (`rootDir` der Haupt-`tsconfig` ist `src`, die IaC-Datei faellt da raus) |
-| `railway.toml` | bleibt unveraendert stehen, mit Hinweis-Header. **Bis `apply` durch ist, steuert weiter sie den Betrieb.** |
+| `railway.toml` | bleibt vorerst stehen, mit Hinweis-Header. Siehe „Was die `railway.toml` heute noch steuert" |
 | `package.json` | `railway@3.11.0` als devDependency, Script `typecheck:railway` |
 | `.github/workflows/ci.yml` | CI prueft die IaC-Datei mit |
 
-Die IaC-Datei ist bis zum `apply` **inert**: Railway liest sie erst, wenn die
-Services in Railway von Config as Code auf IaC umgestellt sind. Dieser Commit
-aendert am laufenden Betrieb also nichts.
+Die IaC-Datei ist bis zum `apply` **inert**. Dieser Commit aendert am laufenden
+Betrieb nichts.
+
+## Herkunft der Werte
+
+`.railway/railway.ts` ist mit **`railway config pull`** aus dem Projekt
+`alles-neue-tools`, Environment `production`, erzeugt (19.09.2026) und danach
+nur umformatiert und kommentiert — `railway config plan` bestaetigt, dass die
+Umformatierung nichts an der Semantik geaendert hat.
+
+Die Werte sind also **gelesen, nicht rekonstruiert**. Das ist der Unterschied zum
+ersten Entwurf dieser Migration: der entstand, als die Railway-API aus der
+Arbeitsumgebung nicht erreichbar war (403 der Egress-Policy auf
+`backboard.railway.com`), und leitete die Services aus `tool_configs` in Supabase
+ab. Dieser Abgleich war falsch — siehe naechster Abschnitt.
 
 ## Die fuenf Services
 
-Aus `tool_configs` in Supabase (`config.railway_instance_id` ist gesetzt):
+Ist-Zustand aus Railway:
 
-| Service | TOOL_SLUG | TOOL_CITY | TOOL_MODE | aktiv |
-|---------|-----------|-----------|-----------|-------|
-| `google-maps-hoi-an` | `google-maps` | `hoi-an` | — | ✅ |
-| `google-maps-da-nang` | `google-maps` | `da-nang` | `baseline_only` | ❌ |
-| `sitemap-miner` | `sitemap-miner` | `all` | `baseline_only` | ❌ |
-| `google-alerts` | `google-alerts` | `all` | — | ❌ |
-| `osm-monitor` | `osm-monitor` | `all` | — | ❌ |
+| Service | Startbefehl | Cron (UTC) | Builder |
+|---------|-------------|------------|---------|
+| `google-maps-hoi-an` | `npm run run-tool -- --slug google-maps` | `0 22 * * 1,3,5` | RAILPACK |
+| `osm-monitor` | `npm run run-tool -- --slug osm-monitor` | `0 22 * * *` | RAILPACK |
+| `sitemap-miner` | `npm run run-tool -- --slug sitemap-miner` | `0 18 * * *` | RAILPACK |
+| `google-alerts` | `npm run run-tool -- --slug google-alerts` | `0 18 * * *` | RAILPACK |
+| `changedetection` | `npm run run-tool -- --slug changedetection` | — (nur manuell) | RAILPACK |
 
-**Die Spalte `TOOL_SLUG` ist die Stolperfalle.** Der Service heisst
-`google-maps-hoi-an`, `TOOL_SLUG` muss aber `google-maps` sein. `run-tool.ts`
-setzt den Config-Slug selbst aus `--slug` + `--city` zusammen und kennt in
-`loadToolFactory()` nur die Basis-Slugs. Steht `TOOL_SLUG` auf dem
-Service-Namen, stirbt der Lauf mit `Unknown tool slug`. Derselbe Fehler passiert
-still, wenn `TOOL_SLUG` gar nicht gesetzt ist: `entrypoint.sh` faellt dann auf
-`RAILWAY_SERVICE_NAME` zurueck — und der ist bei den Per-City-Services genau der
-falsche Wert.
+Alle fuenf: eine Replica in `europe-west4-drams3a`, `restartPolicyType: NEVER`,
+`buildEnvironment: V3`, `runtime: V2`.
+
+### Supabase ist als Quelle unbrauchbar
+
+`tool_configs` in Supabase beschreibt die Railway-Landschaft an drei Stellen
+falsch. Wer von dort aus plant, plant an der Produktion vorbei:
+
+| Behauptung in `tool_configs` | Realitaet in Railway |
+|------------------------------|----------------------|
+| `google-maps-da-nang` hat einen Railway-Service | **existiert nicht** |
+| `changedetection` hat keinen Railway-Service | **existiert** |
+| `schedule` von `google-maps-hoi-an` = `0 6 * * 1,3,5` | `0 22 * * 1,3,5` |
+| `schedule` von `sitemap-miner` = `0 3 * * *` | `0 18 * * *` |
+| `schedule` von `google-alerts` = `0 */6 * * *` | `0 18 * * *` |
+| `schedule` von `osm-monitor` = `0 4 * * 0` | `0 22 * * *` |
+
+Gesteuert wird der Lauf von Railway, nicht von der Spalte. `tool_configs.schedule`
+ist reine Anzeige und seit unbekannter Zeit nicht nachgezogen.
+
+### `TOOL_SLUG` ist der Basis-Slug
+
+Der Service heisst `google-maps-hoi-an`, `TOOL_SLUG` muss aber `google-maps`
+sein. `run-tool.ts` setzt den Config-Slug selbst aus `--slug` + `--city`
+zusammen und kennt in `loadToolFactory()` nur die Basis-Slugs. Steht `TOOL_SLUG`
+auf dem Service-Namen, stirbt der Lauf mit `Unknown tool slug`.
+
+In der IaC-Datei stehen die `TOOL_*`-Variablen als `preserve()` — sie werden
+weiter im Dashboard gepflegt. `apply` kann sie damit weder ueberschreiben noch
+loeschen.
+
+## Was die `railway.toml` heute noch steuert
+
+Vermutlich nichts. Sie sagt `builder = "nixpacks"` und
+`startCommand = "bash entrypoint.sh"`; live laufen alle fuenf Services auf
+**RAILPACK** und starten mit `npm run run-tool -- --slug …`. Die
+Service-Einstellungen im Dashboard haben die Datei also ueberholt.
+
+Zwei Konsequenzen:
+
+- **`entrypoint.sh` wird im Deploy nicht mehr aufgerufen.** Der Fallback auf
+  `RAILWAY_SERVICE_NAME` und die Runtime-Zeile `runtime: node v… | tsx v…`, die
+  das Skript ausgibt, greifen im Railway-Lauf nicht. Lokal ist es weiter nutzbar.
+- **Der frueher geplante Schritt „Nixpacks -> Railpack" ist erledigt**, bevor er
+  angefangen hat. Er steht deshalb nicht mehr in diesem Dokument.
+
+Trotzdem bleibt die Datei bis nach dem `apply` liegen: solange nicht bewiesen
+ist, dass sie wirklich folgenlos ist, ist ihr Entfernen eine zweite Aenderung im
+selben Fenster.
 
 ## Ablauf der Migration
 
@@ -68,87 +121,32 @@ railway link                     # Projekt + Environment verknuepfen
 railway config plan              # DIFF ANSEHEN — aendert nichts
 ```
 
-`plan` ist hier kein Formalismus, sondern der eigentliche Pruefschritt (siehe
-naechste Abschnitte). Erwartet wird genau eine Aenderung — die Cron-Zeit von
-`google-maps-hoi-an`. Erst wenn der Diff verstanden ist:
+Erwartet wird **genau eine** Aenderung:
+
+```
+Plan: 0 to add, 1 to change, 0 to destroy
+  ~ Update google-maps-hoi-an deploy.cronSchedule
+    └ deploy.cronSchedule ("0 22 * * 1,3,5" → "0 23 * * 0,2,4")
+```
+
+Sieht der Plan anders aus, wurde in Railway von Hand verstellt — dann erst
+klaeren, nicht anwenden. Sonst:
 
 ```bash
 railway config apply             # fragt vor destruktiven Schritten nach
 ```
 
-Danach, und **erst** danach:
+Danach einen gruenen Lauf von `google-maps-hoi-an` abwarten, und **erst** dann:
 
 ```bash
 git rm railway.toml
 ```
 
-Sicherheitsnetze, die Railway dabei eingebaut hat: `apply` wird abgelehnt, wenn
-sich die Umgebung seit dem `plan` geaendert hat; Variablenwerte sind in der
-Plan-Ausgabe geschwaerzt; und das Loeschen von Ressourcen oder Variablen
-braucht zusaetzlich `--confirm-destructive`, ein verirrtes `--yes` allein reicht
-also nicht.
-
-## Was belegt ist — und was nicht
-
-Die Railway-API war aus der Arbeitsumgebung nicht erreichbar (403 der
-Egress-Policy auf `backboard.railway.com` und `railway.app`). Es ist derselbe
-Blocker, an dem schon der Dependency-Audit haengengeblieben ist. Die Werte in
-`.railway/railway.ts` sind deshalb **rekonstruiert**, nicht aus Railway gelesen.
-
-Belegt:
-
-- **Der Deploy laeuft.** `google-maps-hoi-an` hat seit dem Audit-Merge
-  (30.08.2026, 05:09 UTC) neun Laeufe hinter sich, alle gruen — vom 31.08. bis
-  zum 18.09.2026, je rund 20–27 Minuten. Der offene Punkt aus
-  `DEPENDENCY-AUDIT.md` — „der Railway-Deploy selbst ist nicht verifiziert" —
-  ist damit durch Produktionsdaten erledigt.
-- **Die Cron-Zeit von `google-maps-hoi-an`** ist in Railway heute
-  `0 22 * * 1,3,5`. Alle 52 Laeufe starteten Mo/Mi/Fr zwischen 22:00 und 22:05
-  UTC; die Streuung ist die Container-Startzeit. (Die IaC-Datei setzt hier
-  bewusst einen anderen Wert — siehe „Die eine beabsichtigte Aenderung".)
-
-  **Railway wertet Cron in UTC aus** — nicht in der Zeitzone des Dashboards und
-  nicht in einer US-Zeitzone. Der Ausdruck oben ist also woertlich UTC. Was er
-  lokal bedeutet:
-
-  | Zone | lokale Zeit |
-  |------|-------------|
-  | UTC | Mo/Mi/Fr 22:00 |
-  | Vietnam (UTC+7) | **Di/Do/Sa 05:00** |
-  | Deutschland (CEST, UTC+2) | Di/Do/Sa 00:00 |
-  | US Eastern (UTC-4) | Mo/Mi/Fr 18:00 |
-
-  Wichtig ist der Tagessprung: lokal laeuft das Tool **Di/Do/Sa**, nicht
-  Mo/Mi/Fr. Wer eine Cron-Zeit von lokal nach UTC umrechnet, muss die
-  Wochentagsfelder mit verschieben — sonst stimmt die Stunde und der Tag nicht.
-- **`tsx` startet trotz blockiertem esbuild-Postinstall.** pnpm 10 fuehrt
-  `esbuild@0.28.2`s Build-Script nicht aus; das Binary kommt aus dem
-  Plattform-Paket `@esbuild/linux-x64`. `./node_modules/.bin/tsx --version`
-  funktioniert nach `pnpm install --frozen-lockfile` auf Node 22, der
-  Untergrenze von `engines`.
-- **Die IaC-Datei ist gueltig.** `validateGraph()` aus dem SDK meldet keine
-  Fehler, die fuenf Adressen sind eindeutig, die Secrets kompilieren zu
-  `preserve` statt zu Literalen.
-
-Nicht belegt — gehoert in den `plan`-Diff:
-
-- **Die Cron-Zeiten der vier inaktiven Services.** Sie sind aus
-  `tool_configs.schedule` uebernommen. Genau diese Spalte weicht bei
-  `google-maps-hoi-an` aber nachweislich von Railway ab: sie sagt
-  `0 6 * * 1,3,5`, Railway feuert `0 22 * * 1,3,5`. Gesteuert wird der Lauf von
-  Railway, nicht von der Spalte.
-
-  Die Differenz laesst sich mit keiner Zeitzone sauber wegrechnen: `0 6` wuerde
-  22:00 UTC nur in UTC+8 entsprechen, und dann waeren die Wochentage Di/Do/Sa
-  statt Mo/Mi/Fr. Denkbar ist also eine halbe Umrechnung (Stunde verschoben,
-  Wochentag nicht) — oder die Spalte wurde einfach nie nachgezogen. Solange das
-  nicht geklaert ist, ist sie als Quelle fuer die anderen vier schwach.
-- **Die Env-Variablen der Services.** Fuer `google-maps-hoi-an` sind sie aus dem
-  Laufverhalten ableitbar, bei den anderen vier nicht. Ein leerer Diff bestaetigt
-  sie; alles andere ist zu klaeren, bevor `apply` laeuft.
-
-Ein Diff bei den `TOOL_*`-Variablen ist also **kein Rauschen**, sondern die
-Antwort auf eine offene Frage.
+Sicherheitsnetze, die Railway eingebaut hat: `apply` wird abgelehnt, wenn sich
+die Umgebung seit dem `plan` geaendert hat; Variablenwerte sind in der
+Plan-Ausgabe geschwaerzt; und das Loeschen von Ressourcen oder Variablen braucht
+zusaetzlich `--confirm-destructive`, ein verirrtes `--yes` allein reicht also
+nicht.
 
 ## Die eine beabsichtigte Aenderung
 
@@ -160,6 +158,7 @@ die Cron-Zeit von `google-maps-hoi-an`.
 | heute in Railway | `0 22 * * 1,3,5` | Di/Do/Sa 05:00 |
 | gewollt | `0 23 * * 0,2,4` | **Mo/Mi/Fr 06:00** |
 
+**Railway wertet Cron in UTC aus** — nicht in der Zeitzone des Dashboards.
 Umrechnung ICT -> UTC (Vietnam hat keine Sommerzeit, dauerhaft UTC+7):
 
 ```
@@ -170,154 +169,39 @@ Fr 06:00 ICT  =  Do 23:00 UTC   -> 4
 
 **Der Wochentag rutscht einen zurueck**, weil 06:00 minus sieben Stunden ueber
 Mitternacht faellt. Nur die Stunde umzurechnen und `1,3,5` stehen zu lassen,
-waere um genau einen Tag daneben — vermutlich genau der Fehler, der zu der
-Differenz zwischen `tool_configs.schedule` und Railway gefuehrt hat.
+waere um genau einen Tag daneben.
 
-Im `plan`-Diff ist diese eine Zeile also erwartet. Jede weitere nicht.
+**Zeitfenster:** der Service laeuft 20–27 Minuten. Umstellen direkt nach einem
+gruenen Lauf, dann sind knapp zwei Tage Puffer bis zum naechsten.
+
+## Belegt
+
+- **Der Deploy laeuft.** `google-maps-hoi-an` hat seit dem Audit-Merge
+  (30.08.2026, 05:09 UTC) neun Laeufe hinter sich, alle gruen — vom 31.08. bis
+  zum 18.09.2026, je rund 20–27 Minuten. Der offene Punkt aus
+  `DEPENDENCY-AUDIT.md` — „der Railway-Deploy selbst ist nicht verifiziert" —
+  ist damit durch Produktionsdaten erledigt.
+- **Der Plan-Diff.** `railway config plan` gegen die Produktionsumgebung zeigt
+  die eine Cron-Zeile und sonst nichts. Services, Startbefehle, Regionen und
+  Variablen decken sich also mit der Datei.
+- **Die IaC-Datei ist gueltig.** `pnpm run typecheck:railway` ist gruen, die
+  fuenf Adressen sind eindeutig, die Variablen kompilieren zu `preserve` statt
+  zu Literalen.
 
 ## Danach
 
-1. **Builder auf Railpack** — eigener Plan, siehe unten.
+1. **`railway.toml` entfernen** — nach `apply` und einem gruenen Lauf.
 2. **`tool_configs.schedule` aufraeumen.** Die Spalte suggeriert eine Steuerung,
-   die sie nicht hat, und steht bei `google-maps-hoi-an` auf einem falschen Wert.
+   die sie nicht hat, und steht bei allen vier Cron-Services auf falschen Werten.
    Entweder aus der IaC-Datei nachziehen oder im Admin-UI als reine Anzeige
    kennzeichnen.
-3. **`TOOL_MODE` gegen Tippfehler absichern.** `entrypoint.sh` kennt nur
+3. **`config.railway_instance_id` korrigieren.** Der Eintrag fuer
+   `google-maps-da-nang` zeigt auf einen Service, den es nicht gibt;
+   `changedetection` hat einen Service, aber keinen Eintrag.
+4. **`entrypoint.sh` klaeren.** Wird im Railway-Deploy nicht mehr aufgerufen —
+   entweder als Startbefehl zurueckholen oder als reines Lokal-Skript
+   kennzeichnen.
+5. **`TOOL_MODE` gegen Tippfehler absichern.** `entrypoint.sh` kennt nur
    `baseline_only` und `dry_run` und verwirft alles andere still — derselbe
    Fehler, der auf der DB-Seite mit PR #3 behoben wurde (`Unknown
    run_config.mode ... — ignored`). Auf der Env-Seite steht er noch offen.
-
----
-
-# Plan: Nixpacks -> Railpack
-
-Railpack ist der Nachfolger von Nixpacks und auf Railway inzwischen der
-Standard-Builder. Der Wechsel ist **nicht** das Umlegen eines Schalters: die
-beiden Builder ermitteln die Node-Version unterschiedlich, und dieses Repo
-haengt an genau dieser Stelle an einer bewussten Entscheidung.
-
-## Warum das nicht trivial ist
-
-`package.json` steht auf `"engines": { "node": ">=22 <25" }`. Die Obergrenze ist
-Absicht: Nixpacks nimmt aus der Range den hoechsten verfuegbaren LTS-Major, und
-ohne `<25` wuerde der Build mitwandern, sobald Nixpacks eine neue Major aufnimmt.
-
-Railpack loest anders auf. Reihenfolge laut Quellcode des Node-Providers:
-
-```
-RAILPACK_NODE_VERSION  >  package.json engines.node  >  mise-Dateien (.nvmrc, .node-version)  >  Default "lts"
-```
-
-Zwei Konsequenzen fuer dieses Repo:
-
-- **`.nvmrc` (24) verliert.** `engines.node` steht darueber. Heute ist das
-  folgenlos, weil beide auf 24 hinauslaufen sollten — aber die Datei ist dann
-  Dekoration, nicht Steuerung.
-- **Die Range geht woertlich an mise.** Railpack reicht den String
-  `">=22 <25"` unveraendert weiter und laesst mise aufloesen. Neuere mise-
-  Versionen koennen npm-Semver-Ranges und wuerden die hoechste passende Version
-  waehlen (also 24, wie heute). Aeltere mise-Versionen haben Range-Operatoren
-  abgeschnitten und daraus ein Praefix gemacht — aus `>=22 <25` wuerde dann
-  etwas anderes als 24, im schlechtesten Fall ein Parse-Fehler.
-
-Welche mise-Version im Railpack-Image steckt, ist von hier aus nicht
-feststellbar. **Das ist die eine Frage, die der Testlauf beantworten muss** —
-nicht durch Nachdenken, sondern durch Ablesen.
-
-Das Gute: die Antwort steht schon im Log. `entrypoint.sh` gibt seit dem
-Dependency-Audit in Zeile 2 die aufgeloeste Runtime aus:
-
-```
-  runtime: node v24.x.x | tsx v4.23.13
-```
-
-## Vorbedingung
-
-Die IaC-Migration muss durch sein (`railway config apply`, siehe oben). Dann ist
-der Builder-Wechsel eine Ein-Zeilen-Aenderung in `.railway/railway.ts`, und
-`railway config plan` zeigt genau diese eine Zeile. Das ist der ganze Punkt der
-Aufteilung: ein Diff, eine Ursache.
-
-## Schritt 1 — Kanarienvogel: `google-maps-da-nang`
-
-Nicht mit dem produktiven Service anfangen. `google-maps-da-nang` ist dafuer
-ideal und schon da:
-
-- eigener Railway-Service, gleiches Repo, gleiches `entrypoint.sh`
-- `is_active = false` in `tool_configs`, seit jeher nie gelaufen
-- **`run-tool.ts` steigt bei `is_active = false` sofort mit Exit 0 aus**, bevor
-  irgendein Tool geladen wird
-
-Der Lauf schreibt also nichts und kostet keine API-Calls — beweist aber genau
-das, was der Builder kaputtmachen kann: Image gebaut, Node aufgeloest, pnpm
-installiert, `./node_modules/.bin/tsx` gestartet, `config.ts` geladen, Supabase
-erreicht. Tool-Logik kann ein Builder nicht brechen.
-
-```ts
-// .railway/railway.ts — nur beim da-nang-Service:
-build: { builder: 'RAILPACK' },
-```
-
-```bash
-railway config plan     # muss GENAU eine Zeile zeigen
-railway config apply
-```
-
-Dann den Service in Railway einmal manuell starten und im Deploy-Log pruefen:
-
-| Zu pruefen | Erwartung |
-|------------|-----------|
-| Build laeuft durch | gruen |
-| `runtime: node v…` in Zeile 2 | **v24.x** — wie unter Nixpacks |
-| pnpm-Version im Build-Log | 10.33.0 (aus `packageManager`) |
-| Install-Kommando | `--frozen-lockfile`, kein Lockfile-Update |
-| `tsx v4.23.13` in Zeile 2 | vorhanden (nicht leer) |
-| letzte Zeile | `[run-tool] Tool "google-maps" is deactivated (is_active=false). Exiting.` |
-
-**Die Node-Major ist das Abbruchkriterium.** Steht dort v22 statt v24, hat mise
-die Range anders aufgeloest als Nixpacks. Dann nicht weitermachen, sondern
-zuerst die Version explizit festnageln (Schritt 2). Ein leeres `tsx v…` heisst,
-das esbuild-Binary fehlt — dann haette Railpack die Plattform-Pakete anders
-behandelt als pnpm lokal.
-
-## Schritt 2 — nur falls Schritt 1 die falsche Node-Major liefert
-
-Die Range explizit machen, statt sie zu interpretieren. Zwei Wege, der zweite
-ist der ehrlichere:
-
-- `RAILPACK_NODE_VERSION=24` als Service-Variable — hoechste Prioritaet,
-  ueberschreibt alles. Schnell, aber die Wahrheit steht dann in Railway und
-  nicht im Repo.
-- `"engines": { "node": "24.x" }` in der `package.json`. Damit gibt es nichts
-  mehr aufzuloesen. Kostet die Untergrenze `>=22`, die bisher verhindert hat,
-  dass Code eingecheckt wird, der auf Node 22 fehlt — dafuer muesste die CI-
-  Matrix dann beide Majors bauen. Diese Abwaegung gehoert in den PR, nicht in
-  einen Kommentar.
-
-Danach Schritt 1 wiederholen.
-
-## Schritt 3 — produktive Services nachziehen
-
-Erst wenn der Kanarienvogel sauber ist. Reihenfolge: die drei uebrigen
-inaktiven Services (`sitemap-miner`, `google-alerts`, `osm-monitor`) zusammen,
-danach `google-maps-hoi-an` allein.
-
-**Zeitfenster:** `google-maps-hoi-an` feuert Mo/Mi/Fr 22:00 UTC und laeuft
-20–27 Minuten. Umstellen direkt nach einem gruenen Lauf, dann sind knapp zwei
-Tage Puffer bis zum naechsten — genug, um einen Fehlschlag zu bemerken und
-zurueckzudrehen, ohne ein Lauffenster zu verlieren.
-
-## Rollback
-
-Die eine Zeile zurueck auf `'NIXPACKS'`, `railway config plan`, `apply`. Kein
-Datenrisiko: die Services sind Einmal-Jobs mit `restartPolicyType: NEVER`, ein
-roter Build nimmt nichts vom Netz, er laesst schlimmstenfalls ein Lauffenster
-ausfallen. Solange Railway `railway.toml` noch liest (bis 01.12.2026), ist auch
-der Weg zurueck auf Config as Code offen.
-
-## Wann das erledigt sein muss
-
-Der Builder-Wechsel hat **keine** Deadline — Nixpacks funktioniert weiter. Die
-IaC-Migration hat eine (01.12.2026). Nicht die Reihenfolge verwechseln: erst
-das, was ablaeuft, dann das, was besser waere.
-

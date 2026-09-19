@@ -3,10 +3,15 @@
 # Nachfolger ist Infrastructure as Code: .railway/railway.ts
 # Migration und Ablauf stehen in RAILWAY.md.
 #
-# Bis `railway config apply` durch ist, steuert weiterhin DIESE Datei die
-# Services — sie bleibt deshalb bis dahin unveraendert stehen. Wer hier etwas
-# aendert, muss es in .railway/railway.ts nachziehen, sonst faellt es beim
-# Umschalten wieder raus.
+# Diese Datei steuert die Services vermutlich schon heute nicht mehr: sie sagt
+# builder = nixpacks und startCommand = bash entrypoint.sh, live laufen alle
+# fuenf Services auf RAILPACK und starten mit `npm run run-tool -- --slug ...`.
+# Die Service-Einstellungen im Dashboard haben sie ueberholt.
+#
+# Sie bleibt trotzdem stehen, bis `railway config apply` durch und ein Lauf
+# gruen ist — solange das nicht bewiesen ist, waere ihr Entfernen eine zweite
+# Aenderung im selben Fenster. Wer hier etwas aendert, muss es in
+# .railway/railway.ts nachziehen.
 
 [build]
 builder = "nixpacks"

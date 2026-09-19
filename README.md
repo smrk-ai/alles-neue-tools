@@ -97,17 +97,21 @@ Homestays werden erkannt (`homestay-filter.ts`), in `known_places` behalten, abe
 
 **Von 11 Eintraegen in `tool_configs` ist genau einer aktiv.**
 
-| Slug | aktiv | Zeitplan | letzter Lauf | Befund |
-|------|-------|----------|--------------|--------|
+| Slug | aktiv | Zeitplan laut `tool_configs` | letzter Lauf | Befund |
+|------|-------|------------------------------|--------------|--------|
 | `google-maps-hoi-an` | ✅ | `0 6 * * 1,3,5` | 16.09.2026 | laeuft zuverlaessig, 13 Laeufe/30 Tage ohne Fehler |
 | `google-alerts` | ❌ | `0 */6 * * *` | 30.08.2026 | letzter Lauf fand 58 neue Eintraege, danach abgeschaltet |
 | `osm-monitor` | ❌ | `0 4 * * 0` | 14.07.2026 | `Overpass API error 406` |
 | `sitemap-miner` | ❌ | `0 3 * * *` | 05.06.2026 | Modus jetzt `baseline_only` (stand auf `baseline`, wurde ignoriert) |
-| `google-maps-da-nang` | ❌ | `0 7 * * 2,6` | nie | konfiguriert inkl. Railway-Service, nie gestartet |
-| `changedetection` | ❌ | `0 5 * * *` | 09.03.2026 | Watch-UUIDs leer, kein Railway-Service |
+| `google-maps-da-nang` | ❌ | `0 7 * * 2,6` | nie | **kein Railway-Service** — `railway_instance_id` zeigt ins Leere |
+| `changedetection` | ❌ | `0 5 * * *` | 09.03.2026 | Watch-UUIDs leer; **Railway-Service existiert**, aber ohne Cron |
 | `facebook-scout` / `instagram-scout` | ❌ | — | nie | Meta-Tokens fehlen |
 | `google-maps` | ❌ | — | 21.06.2026 | alter Basis-Slug vor der per-City-Umstellung, Karteileiche |
 | `quick-entry` / `prompt-import` | ❌ | — | nie | CLI, wird nicht ueber `tool_runs` getrackt |
+
+> **Die Spalte `Zeitplan` steuert nichts.** Gesteuert wird der Lauf von
+> Railway, und dort stehen bei allen vier Cron-Services andere Werte. Der
+> Ist-Zustand steht in `RAILWAY.md`.
 
 ### Der Trichter
 
@@ -142,8 +146,11 @@ deren Phase 5 fehlen bis heute `vn-platforms`, `foody-monitor` und `job-monitor`
 
 ### Railway
 
-Jedes Tool ist ein eigener Railway-Service mit `startCommand = bash entrypoint.sh`
-und `restartPolicyType = never`. Gesteuert wird über Env-Variablen:
+Jedes Tool ist ein eigener Railway-Service mit `restartPolicyType = never`.
+Gestartet wird direkt mit `npm run run-tool -- --slug <basis-slug>` — der
+`startCommand = bash entrypoint.sh` aus der `railway.toml` ist von den
+Service-Einstellungen überholt und greift im Deploy nicht mehr.
+Gesteuert wird über Env-Variablen:
 
 | Variable | Wirkung |
 |----------|---------|
@@ -157,17 +164,21 @@ und `restartPolicyType = never`. Gesteuert wird über Env-Variablen:
 `TOOL_SLUG` ist der **Basis-Slug**, nicht der Service-Name: der Service
 `google-maps-hoi-an` braucht `TOOL_SLUG=google-maps` plus `TOOL_CITY=hoi-an`.
 `run-tool.ts` setzt den Config-Slug selbst wieder zusammen. Steht dort der
-Service-Name (oder nichts, dann greift der `RAILWAY_SERVICE_NAME`-Fallback),
-stirbt der Lauf mit `Unknown tool slug`.
+Service-Name, stirbt der Lauf mit `Unknown tool slug`. Der
+`RAILWAY_SERVICE_NAME`-Fallback stammt aus `entrypoint.sh` und greift im
+Railway-Deploy nicht mehr, weil das Skript dort nicht mehr aufgerufen wird.
 
 Der Admin-Button „Run Now" triggert über die Railway-API
 (`config.railway_instance_id` im jeweiligen `tool_configs`-Eintrag).
 
 **Config as Code ist abgekündigt.** Railway liest `railway.toml` nur noch bis
 zum 01.12.2026. Die Ablösung liegt als Infrastructure as Code in
-`.railway/railway.ts` und beschreibt alle fünf Services samt Cron und
-Env-Variablen — sie ist aber noch nicht angewendet, bis dahin steuert weiter
-die `railway.toml`. Ablauf, Belege und offene Punkte: `RAILWAY.md`.
+`.railway/railway.ts` und beschreibt alle fünf Services (`google-maps-hoi-an`,
+`osm-monitor`, `sitemap-miner`, `google-alerts`, `changedetection`) samt Cron
+und Env-Variablen. Sie ist mit `railway config pull` aus der Produktion
+gelesen, aber noch nicht angewendet — `railway config plan` zeigt genau eine
+offene Änderung, die Cron-Zeit von `google-maps-hoi-an`. Ablauf, Belege und
+offene Punkte: `RAILWAY.md`.
 
 ### Lokal
 
