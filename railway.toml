@@ -1,3 +1,18 @@
+# ABGEKUENDIGT — Railway liest diese Datei nur noch bis zum 01.12.2026.
+#
+# Nachfolger ist Infrastructure as Code: .railway/railway.ts
+# Migration und Ablauf stehen in RAILWAY.md.
+#
+# Diese Datei steuert die Services vermutlich schon heute nicht mehr: sie sagt
+# builder = nixpacks und startCommand = bash entrypoint.sh, live laufen alle
+# fuenf Services auf RAILPACK und starten mit `npm run run-tool -- --slug ...`.
+# Die Service-Einstellungen im Dashboard haben sie ueberholt.
+#
+# Sie bleibt trotzdem stehen, bis `railway config apply` durch und ein Lauf
+# gruen ist — solange das nicht bewiesen ist, waere ihr Entfernen eine zweite
+# Aenderung im selben Fenster. Wer hier etwas aendert, muss es in
+# .railway/railway.ts nachziehen.
+
 [build]
 builder = "nixpacks"
 

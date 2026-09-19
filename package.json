@@ -23,6 +23,7 @@
     "run-tool": "tsx src/cli/run-tool.ts",
     "run-all": "tsx src/cli/run-all.ts",
     "typecheck": "tsc --noEmit",
+    "typecheck:railway": "tsc --noEmit -p .railway/tsconfig.json",
     "smoke": "tsx src/cli/smoke.ts",
     "backfill-names": "tsx src/cli/backfill-normalized-names.ts",
     "backfill-missing-names": "tsx src/cli/backfill-names.ts",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "railway": "3.11.0",
     "typescript": "^7.0.2"
   }
 }
