@@ -69,7 +69,8 @@ railway config plan              # DIFF ANSEHEN — aendert nichts
 ```
 
 `plan` ist hier kein Formalismus, sondern der eigentliche Pruefschritt (siehe
-naechster Abschnitt). Erst wenn der Diff verstanden ist:
+naechste Abschnitte). Erwartet wird genau eine Aenderung — die Cron-Zeit von
+`google-maps-hoi-an`. Erst wenn der Diff verstanden ist:
 
 ```bash
 railway config apply             # fragt vor destruktiven Schritten nach
@@ -101,9 +102,10 @@ Belegt:
   zum 18.09.2026, je rund 20–27 Minuten. Der offene Punkt aus
   `DEPENDENCY-AUDIT.md` — „der Railway-Deploy selbst ist nicht verifiziert" —
   ist damit durch Produktionsdaten erledigt.
-- **Die Cron-Zeit von `google-maps-hoi-an`** ist `0 22 * * 1,3,5`. Alle 52
-  Laeufe starteten Mo/Mi/Fr zwischen 22:00 und 22:05 UTC; die Streuung ist die
-  Container-Startzeit.
+- **Die Cron-Zeit von `google-maps-hoi-an`** ist in Railway heute
+  `0 22 * * 1,3,5`. Alle 52 Laeufe starteten Mo/Mi/Fr zwischen 22:00 und 22:05
+  UTC; die Streuung ist die Container-Startzeit. (Die IaC-Datei setzt hier
+  bewusst einen anderen Wert — siehe „Die eine beabsichtigte Aenderung".)
 
   **Railway wertet Cron in UTC aus** — nicht in der Zeitzone des Dashboards und
   nicht in einer US-Zeitzone. Der Ausdruck oben ist also woertlich UTC. Was er
@@ -147,6 +149,31 @@ Nicht belegt — gehoert in den `plan`-Diff:
 
 Ein Diff bei den `TOOL_*`-Variablen ist also **kein Rauschen**, sondern die
 Antwort auf eine offene Frage.
+
+## Die eine beabsichtigte Aenderung
+
+Alles an dieser Migration bildet den Ist-Zustand ab — mit **einer** Ausnahme:
+die Cron-Zeit von `google-maps-hoi-an`.
+
+| | Cron (UTC) | lokal (Vietnam, UTC+7) |
+|---|---|---|
+| heute in Railway | `0 22 * * 1,3,5` | Di/Do/Sa 05:00 |
+| gewollt | `0 23 * * 0,2,4` | **Mo/Mi/Fr 06:00** |
+
+Umrechnung ICT -> UTC (Vietnam hat keine Sommerzeit, dauerhaft UTC+7):
+
+```
+Mo 06:00 ICT  =  So 23:00 UTC   -> cron-Wochentag 0
+Mi 06:00 ICT  =  Di 23:00 UTC   -> 2
+Fr 06:00 ICT  =  Do 23:00 UTC   -> 4
+```
+
+**Der Wochentag rutscht einen zurueck**, weil 06:00 minus sieben Stunden ueber
+Mitternacht faellt. Nur die Stunde umzurechnen und `1,3,5` stehen zu lassen,
+waere um genau einen Tag daneben — vermutlich genau der Fehler, der zu der
+Differenz zwischen `tool_configs.schedule` und Railway gefuehrt hat.
+
+Im `plan`-Diff ist diese eine Zeile also erwartet. Jede weitere nicht.
 
 ## Danach
 

@@ -17,9 +17,12 @@
 // WICHTIG: `plan` ist Pflicht, nicht Kuer. Die Cron-Zeiten und Env-Variablen
 // unten sind aus der Lauf-Historie in Supabase und aus `entrypoint.sh`
 // rekonstruiert, weil die Railway-API beim Schreiben dieser Datei nicht
-// erreichbar war. Der Plan-Diff ist der Abgleich mit der Realitaet: erwartet
-// wird ein leerer Diff. Was dort auftaucht, ist entweder hier falsch oder in
-// Railway von Hand verstellt worden — beides gehoert geklaert, bevor
+// erreichbar war. Der Plan-Diff ist der Abgleich mit der Realitaet.
+//
+// Erwartet wird dabei GENAU EINE Aenderung: die Cron-Zeit von
+// `google-maps-hoi-an` (Umstellung auf 06:00 vietnamesische Zeit, siehe dort).
+// Alles andere im Diff ist ungeplant — dann ist entweder diese Datei falsch
+// oder in Railway wurde von Hand verstellt. Beides gehoert geklaert, bevor
 // `apply` laeuft.
 
 import { defineRailway, github, preserve, project, service } from 'railway/iac';
@@ -104,12 +107,22 @@ function tool({ name, slug, city = 'all', mode, cron, builder = DEFAULT_BUILDER 
 
 export default defineRailway(() => {
   const tools = [
-    // Der einzige Service im Regelbetrieb. Cron aus 52 Laeufen abgeleitet:
-    // alle starteten Mo/Mi/Fr zwischen 22:00 und 22:05 UTC (zuletzt
-    // 2026-09-18 22:03 UTC). `tool_configs.schedule` sagt `0 6 * * 1,3,5` —
-    // diese Spalte ist Anzeige im Admin-UI und stimmt mit Railway nicht
-    // ueberein; sie steuert den Lauf nicht.
-    tool({ name: 'google-maps-hoi-an', slug: 'google-maps', city: 'hoi-an', cron: '0 22 * * 1,3,5' }),
+    // Der einzige Service im Regelbetrieb.
+    //
+    // ACHTUNG — das ist die eine Stelle, an der diese Datei bewusst NICHT den
+    // Ist-Zustand abbildet: Railway feuert heute `0 22 * * 1,3,5`, also
+    // Di/Do/Sa 05:00 vietnamesischer Zeit. Gewollt sind Mo/Mi/Fr 06:00 ICT.
+    // Der `plan`-Diff zeigt diese Zeile deshalb als Aenderung — sie ist
+    // beabsichtigt, im Gegensatz zu allem anderen im Diff.
+    //
+    // Umrechnung ICT (UTC+7, keine Sommerzeit) -> UTC:
+    //   Mo 06:00 ICT = So 23:00 UTC   (cron-Wochentag 0)
+    //   Mi 06:00 ICT = Di 23:00 UTC   (2)
+    //   Fr 06:00 ICT = Do 23:00 UTC   (4)
+    // Der Wochentag rutscht einen zurueck, weil 06:00 minus 7 Stunden ueber
+    // Mitternacht faellt. Nur die Stunde umzurechnen und `1,3,5` stehen zu
+    // lassen, waere um genau einen Tag daneben.
+    tool({ name: 'google-maps-hoi-an', slug: 'google-maps', city: 'hoi-an', cron: '0 23 * * 0,2,4' }),
 
     // Ab hier: in `tool_configs` auf is_active=false, seit Monaten kein Lauf.
     // Die Cron-Zeiten sind aus `tool_configs.schedule` uebernommen, also aus
