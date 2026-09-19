@@ -1,3 +1,13 @@
+# ABGEKUENDIGT — Railway liest diese Datei nur noch bis zum 01.12.2026.
+#
+# Nachfolger ist Infrastructure as Code: .railway/railway.ts
+# Migration und Ablauf stehen in RAILWAY.md.
+#
+# Bis `railway config apply` durch ist, steuert weiterhin DIESE Datei die
+# Services — sie bleibt deshalb bis dahin unveraendert stehen. Wer hier etwas
+# aendert, muss es in .railway/railway.ts nachziehen, sonst faellt es beim
+# Umschalten wieder raus.
+
 [build]
 builder = "nixpacks"
 

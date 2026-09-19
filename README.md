@@ -154,8 +154,20 @@ und `restartPolicyType = never`. Gesteuert wird über Env-Variablen:
 
 `TOOL_SLUG=run-all` startet stattdessen alle in `tool_configs` aktiven Tools nacheinander.
 
+`TOOL_SLUG` ist der **Basis-Slug**, nicht der Service-Name: der Service
+`google-maps-hoi-an` braucht `TOOL_SLUG=google-maps` plus `TOOL_CITY=hoi-an`.
+`run-tool.ts` setzt den Config-Slug selbst wieder zusammen. Steht dort der
+Service-Name (oder nichts, dann greift der `RAILWAY_SERVICE_NAME`-Fallback),
+stirbt der Lauf mit `Unknown tool slug`.
+
 Der Admin-Button „Run Now" triggert über die Railway-API
 (`config.railway_instance_id` im jeweiligen `tool_configs`-Eintrag).
+
+**Config as Code ist abgekündigt.** Railway liest `railway.toml` nur noch bis
+zum 01.12.2026. Die Ablösung liegt als Infrastructure as Code in
+`.railway/railway.ts` und beschreibt alle fünf Services samt Cron und
+Env-Variablen — sie ist aber noch nicht angewendet, bis dahin steuert weiter
+die `railway.toml`. Ablauf, Belege und offene Punkte: `RAILWAY.md`.
 
 ### Lokal
 
@@ -226,6 +238,8 @@ sind: der Typecheck-Fehler in `push-baseline-places.ts`, das zweite Lockfile
 Abhängigkeitsbaum geschlossen und drei nie importierte Runtime-Pakete entfernt
 worden. Details in `DEPENDENCY-AUDIT.md`.
 
-Nicht verifiziert ist dort ein Punkt geblieben: der Railway-Deploy selbst — die
-Railway-API war aus der Arbeitsumgebung nicht erreichbar. Im Deploy-Log steht
-seitdem in Zeile 2 die aufgelöste Runtime (`runtime: node v… | tsx v…`).
+Der dort offen gebliebene Punkt — der Railway-Deploy selbst, mangels Zugang zur
+Railway-API nie verifiziert — ist inzwischen durch Produktionsdaten erledigt:
+`google-maps-hoi-an` hat seit dem Merge am 30.08.2026 zehn grüne Läufe hinter
+sich, zuletzt am 18.09.2026. Im Deploy-Log steht in Zeile 2 die aufgelöste
+Runtime (`runtime: node v… | tsx v…`). Details in `RAILWAY.md`.

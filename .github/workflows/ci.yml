@@ -30,6 +30,9 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      - name: Typecheck Railway-IaC
+        run: pnpm run typecheck:railway
+
       - name: Audit
         run: pnpm audit --audit-level=high
 
