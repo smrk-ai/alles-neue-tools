@@ -147,26 +147,31 @@ deren Phase 5 fehlen bis heute `vn-platforms`, `foody-monitor` und `job-monitor`
 ### Railway
 
 Jedes Tool ist ein eigener Railway-Service mit `restartPolicyType = never`.
-Gestartet wird direkt mit `npm run run-tool -- --slug <basis-slug>` — der
-`startCommand = bash entrypoint.sh` aus der `railway.toml` ist von den
-Service-Einstellungen überholt und greift im Deploy nicht mehr.
-Gesteuert wird über Env-Variablen:
+Gesteuert wird seit dem IaC-`apply` (19.09.2026) über den **Startbefehl** in
+`.railway/railway.ts`, nicht mehr über Env-Variablen:
+
+```
+npm run run-tool -- --slug <basis-slug> [--city <stadt>] [--dry-run] [--baseline-only]
+```
+
+`--slug` ist der **Basis-Slug**, nicht der Service-Name. Der Service
+`google-maps-hoi-an` startet mit `--slug google-maps --city hoi-an`;
+`run-tool.ts` setzt daraus den Config-Slug `google-maps-hoi-an` wieder zusammen.
+
+**`--city` darf bei stadtspezifischen Tools nicht fehlen.** Ohne das Flag greift
+der Default `all`, der Config-Slug bleibt der Basis-Slug — und der steht in
+`tool_configs` auf `is_active=false`. Der Lauf steigt dann still mit Exit 0 aus,
+der Deploy bleibt grün, das Tool tut nichts.
+
+Welche Env-Variablen im Deploy noch wirken:
 
 | Variable | Wirkung |
 |----------|---------|
-| `TOOL_SLUG` | welches Tool (Fallback: `RAILWAY_SERVICE_NAME`). Leer oder `alles-neue-tools` → Exit 0. |
-| `TOOL_CITY` | `hoi-an`, `da-nang` oder `all` (Default) |
-| `TOOL_MODE` | `baseline_only` \| `dry_run` \| leer |
-| `TOOL_MAX_EXECUTION_MIN` | Hard-Timeout, Default 30 min |
+| `TOOL_ENV` | `production` \| `development` — steuert das Log-Level (`src/shared/logger.ts`) |
+| `TOOL_MAX_EXECUTION_MIN` | Hard-Timeout, Default 30 min (`src/shared/config.ts`) |
+| `TOOL_SLUG`, `TOOL_CITY`, `TOOL_MODE` | **tot im Deploy** — nur `entrypoint.sh` liest sie, und das wird seit dem `apply` nicht mehr aufgerufen. Stehen noch in Railway, wirken aber nicht. |
 
-`TOOL_SLUG=run-all` startet stattdessen alle in `tool_configs` aktiven Tools nacheinander.
-
-`TOOL_SLUG` ist der **Basis-Slug**, nicht der Service-Name: der Service
-`google-maps-hoi-an` braucht `TOOL_SLUG=google-maps` plus `TOOL_CITY=hoi-an`.
-`run-tool.ts` setzt den Config-Slug selbst wieder zusammen. Steht dort der
-Service-Name, stirbt der Lauf mit `Unknown tool slug`. Der
-`RAILWAY_SERVICE_NAME`-Fallback stammt aus `entrypoint.sh` und greift im
-Railway-Deploy nicht mehr, weil das Skript dort nicht mehr aufgerufen wird.
+`--slug run-all` startet alle in `tool_configs` aktiven Tools nacheinander.
 
 Der Admin-Button „Run Now" triggert über die Railway-API
 (`config.railway_instance_id` im jeweiligen `tool_configs`-Eintrag).
@@ -175,9 +180,13 @@ Der Admin-Button „Run Now" triggert über die Railway-API
 zum 01.12.2026. Die Ablösung liegt als Infrastructure as Code in
 `.railway/railway.ts` und beschreibt alle fünf Services (`google-maps-hoi-an`,
 `osm-monitor`, `sitemap-miner`, `google-alerts`, `changedetection`) samt Cron
-und Env-Variablen. Sie ist mit `railway config pull` aus der Produktion
-gelesen, aber noch nicht angewendet — `railway config plan` zeigt genau eine
-offene Änderung, die Cron-Zeit von `google-maps-hoi-an`. Ablauf, Belege und
+und Env-Variablen. Sie ist mit `railway config pull` aus der Produktion gelesen
+und **angewendet** — `railway config plan` meldet keine offene Änderung mehr.
+Die `railway.toml` ist damit wirkungslos.
+
+Wichtig seit dem `apply`: der Startbefehl kommt aus der IaC-Datei und umgeht
+`entrypoint.sh`. `TOOL_CITY` und `TOOL_MODE` werden deshalb im Deploy **nicht
+mehr gelesen** — die Stadt steht als `--city` im Startbefehl. Ablauf, Belege und
 offene Punkte: `RAILWAY.md`.
 
 ### Lokal

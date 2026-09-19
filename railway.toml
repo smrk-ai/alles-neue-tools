@@ -3,14 +3,17 @@
 # Nachfolger ist Infrastructure as Code: .railway/railway.ts
 # Migration und Ablauf stehen in RAILWAY.md.
 #
-# Diese Datei steuert die Services vermutlich schon heute nicht mehr: sie sagt
-# builder = nixpacks und startCommand = bash entrypoint.sh, live laufen alle
-# fuenf Services auf RAILPACK und starten mit `npm run run-tool -- --slug ...`.
-# Die Service-Einstellungen im Dashboard haben sie ueberholt.
+# KORREKTUR 19.09.2026: hier stand, diese Datei steuere "vermutlich schon heute
+# nicht mehr". Das war falsch. startCommand = bash entrypoint.sh war bis zum
+# 18.09.2026 aktiv, und entrypoint.sh hat dabei --city "$TOOL_CITY" angehaengt.
+# Seit dem `railway config apply` gilt der Startbefehl aus .railway/railway.ts,
+# der entrypoint.sh umgeht — genau dadurch ging das --city-Flag verloren und
+# google-maps-hoi-an waere still ins Leere gelaufen. Siehe RAILWAY.md,
+# Abschnitt "Stand nach dem apply".
 #
-# Sie bleibt trotzdem stehen, bis `railway config apply` durch und ein Lauf
-# gruen ist — solange das nicht bewiesen ist, waere ihr Entfernen eine zweite
-# Aenderung im selben Fenster. Wer hier etwas aendert, muss es in
+# Ab jetzt ist die Datei wirkungslos: Builder steht live auf RAILPACK, der
+# Startbefehl kommt aus der IaC. Sie kann weg, sobald ein Lauf mit dem
+# --city-Fix gruen war. Wer hier etwas aendert, muss es in
 # .railway/railway.ts nachziehen.
 
 [build]

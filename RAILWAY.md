@@ -1,6 +1,6 @@
 # Railway — Umstellung auf Infrastructure as Code
 
-Stand: 19.09.2026
+Stand: 19.09.2026 (apply durch, Regression im Startbefehl gefunden und behoben)
 
 ## Worum es geht
 
@@ -24,14 +24,14 @@ abgekuendigte Format in anderer Syntax und stirbt am selben Tag.
 
 | Datei | Rolle |
 |-------|-------|
-| `.railway/railway.ts` | die neue Quelle der Wahrheit — noch nicht angewendet |
+| `.railway/railway.ts` | die neue Quelle der Wahrheit — **angewendet** |
 | `.railway/tsconfig.json` | damit die Datei ueberhaupt geprueft wird (`rootDir` der Haupt-`tsconfig` ist `src`, die IaC-Datei faellt da raus) |
 | `railway.toml` | bleibt vorerst stehen, mit Hinweis-Header. Siehe „Was die `railway.toml` heute noch steuert" |
 | `package.json` | `railway@3.11.0` als devDependency, Script `typecheck:railway` |
 | `.github/workflows/ci.yml` | CI prueft die IaC-Datei mit |
 
-Die IaC-Datei ist bis zum `apply` **inert**. Dieser Commit aendert am laufenden
-Betrieb nichts.
+Die IaC-Datei war bis zum `apply` inert. Das `apply` ist inzwischen gelaufen —
+siehe „Stand nach dem apply".
 
 ## Herkunft der Werte
 
@@ -52,7 +52,7 @@ Ist-Zustand aus Railway:
 
 | Service | Startbefehl | Cron (UTC) | Builder |
 |---------|-------------|------------|---------|
-| `google-maps-hoi-an` | `npm run run-tool -- --slug google-maps` | `0 22 * * 1,3,5` | RAILPACK |
+| `google-maps-hoi-an` | `npm run run-tool -- --slug google-maps --city hoi-an` | `0 23 * * 0,2,4` | RAILPACK |
 | `osm-monitor` | `npm run run-tool -- --slug osm-monitor` | `0 22 * * *` | RAILPACK |
 | `sitemap-miner` | `npm run run-tool -- --slug sitemap-miner` | `0 18 * * *` | RAILPACK |
 | `google-alerts` | `npm run run-tool -- --slug google-alerts` | `0 18 * * *` | RAILPACK |
@@ -89,24 +89,34 @@ In der IaC-Datei stehen die `TOOL_*`-Variablen als `preserve()` — sie werden
 weiter im Dashboard gepflegt. `apply` kann sie damit weder ueberschreiben noch
 loeschen.
 
-## Was die `railway.toml` heute noch steuert
+## Was die `railway.toml` gesteuert hat
 
-Vermutlich nichts. Sie sagt `builder = "nixpacks"` und
-`startCommand = "bash entrypoint.sh"`; live laufen alle fuenf Services auf
-**RAILPACK** und starten mit `npm run run-tool -- --slug …`. Die
-Service-Einstellungen im Dashboard haben die Datei also ueberholt.
+**Korrektur.** Eine fruehere Fassung dieses Dokuments hat hier „vermutlich
+nichts" behauptet. Das war falsch, und die Fehlannahme hat direkt die Regression
+verursacht, die unter „Stand nach dem apply" steht.
 
-Zwei Konsequenzen:
+Richtig ist: `startCommand = "bash entrypoint.sh"` war bis zum 18.09.2026 aktiv.
+Der Beleg steht im Deployment-Log dieses Tages — `▶ Starting tool: google-maps
+(city: hoi-an)` kann nur aus `entrypoint.sh` kommen, `run-tool.ts` gibt diese
+Zeile nicht aus. Alle 52 bisherigen Laeufe von `google-maps-hoi-an` sind ueber
+dieses Skript gegangen, und es hat dabei `--city "$TOOL_CITY"` angehaengt.
 
-- **`entrypoint.sh` wird im Deploy nicht mehr aufgerufen.** Der Fallback auf
-  `RAILWAY_SERVICE_NAME` und die Runtime-Zeile `runtime: node v… | tsx v…`, die
-  das Skript ausgibt, greifen im Railway-Lauf nicht. Lokal ist es weiter nutzbar.
+Erst seit dem `apply` gilt der IaC-Startbefehl, und der ruft `run-tool.ts`
+direkt auf. Konsequenzen:
+
+- **`entrypoint.sh` wird im Deploy ab jetzt nicht mehr aufgerufen** — belegt,
+  nicht vermutet. Der Fallback auf `RAILWAY_SERVICE_NAME` und die Runtime-Zeile
+  `runtime: node v… | tsx v…` greifen im Railway-Lauf nicht mehr. Lokal ist das
+  Skript weiter nutzbar.
+- **`TOOL_CITY` und `TOOL_MODE` sind im Deploy tote Variablen.** Nur
+  `entrypoint.sh` liest sie; `grep -rn "TOOL_CITY" src/` ist leer. Was sie
+  frueher gesteuert haben, muss jetzt im Startbefehl der IaC-Datei stehen.
 - **Der frueher geplante Schritt „Nixpacks -> Railpack" ist erledigt**, bevor er
   angefangen hat. Er steht deshalb nicht mehr in diesem Dokument.
 
-Trotzdem bleibt die Datei bis nach dem `apply` liegen: solange nicht bewiesen
-ist, dass sie wirklich folgenlos ist, ist ihr Entfernen eine zweite Aenderung im
-selben Fenster.
+Die Datei ist jetzt wirkungslos — der Builder steht auf RAILPACK, der
+Startbefehl kommt aus der IaC. Sie kann weg, sobald ein Lauf mit dem
+`--city`-Fix gruen war.
 
 ## Ablauf der Migration
 
@@ -188,9 +198,49 @@ gruenen Lauf, dann sind knapp zwei Tage Puffer bis zum naechsten.
   fuenf Adressen sind eindeutig, die Variablen kompilieren zu `preserve` statt
   zu Literalen.
 
+## Stand nach dem `apply`
+
+`railway config apply` ist am 19.09.2026 gelaufen. `railway config plan` (CLI
+5.57.11) meldet seitdem „Your Railway configuration is already up to date" —
+alle fuenf Services, Startbefehle, Cron-Zeiten, Regionen, Replicas,
+Restart-Policies und Variablennamen decken sich mit der Datei. Die Cron-Zeit von
+`google-maps-hoi-an` steht live auf `0 23 * * 0,2,4`, die beabsichtigte
+Aenderung ist also drin.
+
+### Die Regression, die das `apply` ausgeloest hat
+
+Der neue Startbefehl umgeht `entrypoint.sh` — und damit ging das `--city`-Flag
+verloren. Die Kette:
+
+1. Startbefehl war `npm run run-tool -- --slug google-maps`, **ohne `--city`**.
+2. `run-tool.ts` Zeile 91: `city: flagValue('--city') ?? 'all'` → `all`.
+3. Zeile 115: `configSlug = opts.city !== 'all' ? slug-city : slug` → **`google-maps`**,
+   nicht `google-maps-hoi-an`.
+4. In `tool_configs` steht `google-maps` auf `is_active=false`
+   (`google-maps-hoi-an` steht auf `true`).
+5. Zeile 118: `if (dbConfig.isActive === false) { … process.exit(0) }` — stiller
+   Exit 0. Kein Lauf, kein `tool_runs`-Eintrag, kein Fehler, **gruener Deploy**.
+
+Der naechste Cron-Lauf (So 20.09.2026, 23:00 UTC) waere durchgelaufen und haette
+nichts getan. Behoben durch `--city hoi-an` im Startbefehl der IaC-Datei.
+
+**Warum es vorher lief:** alle 52 bisherigen Laeufe gingen ueber
+`entrypoint.sh`, das `--city "$TOOL_CITY"` anhaengt. Die Annahme weiter oben in
+diesem Dokument — die `railway.toml` steuere „vermutlich nichts" — war damit
+falsch: sie hat bis zum 18.09.2026 sehr wohl gesteuert. Der Beleg steht im
+Deployment-Log vom 18.09.: `▶ Starting tool: google-maps (city: hoi-an)` ist
+eine Ausgabe aus `entrypoint.sh`, nicht aus `run-tool.ts`.
+
+**Folge fuer `TOOL_CITY` und `TOOL_MODE`:** beide werden von `src/` nirgends
+gelesen (`grep -rn "TOOL_CITY" src/` ist leer) — nur `entrypoint.sh` liest sie.
+Im IaC-Pfad sind sie tote Variablen. Wer die Stadt oder den Modus aendern will,
+muss den Startbefehl in `.railway/railway.ts` aendern, nicht die Env-Variable im
+Dashboard.
+
 ## Danach
 
-1. **`railway.toml` entfernen** — nach `apply` und einem gruenen Lauf.
+1. **`railway.toml` entfernen** — `apply` ist durch, es fehlt noch ein gruener
+   Lauf mit dem `--city`-Fix (So 20.09., 23:00 UTC). Erst danach loeschen.
 2. **`tool_configs.schedule` aufraeumen.** Die Spalte suggeriert eine Steuerung,
    die sie nicht hat, und steht bei allen vier Cron-Services auf falschen Werten.
    Entweder aus der IaC-Datei nachziehen oder im Admin-UI als reine Anzeige
@@ -198,9 +248,10 @@ gruenen Lauf, dann sind knapp zwei Tage Puffer bis zum naechsten.
 3. **`config.railway_instance_id` korrigieren.** Der Eintrag fuer
    `google-maps-da-nang` zeigt auf einen Service, den es nicht gibt;
    `changedetection` hat einen Service, aber keinen Eintrag.
-4. **`entrypoint.sh` klaeren.** Wird im Railway-Deploy nicht mehr aufgerufen —
-   entweder als Startbefehl zurueckholen oder als reines Lokal-Skript
-   kennzeichnen.
+4. **`entrypoint.sh` klaeren.** Wird im Railway-Deploy nicht mehr aufgerufen
+   (belegt, nicht mehr vermutet — siehe „Die Regression"). Entweder als reines
+   Lokal-Skript kennzeichnen oder entfernen. Solange es liegen bleibt, suggeriert
+   es eine `TOOL_CITY`/`TOOL_MODE`-Steuerung, die es im Deploy nicht mehr gibt.
 5. **`TOOL_MODE` gegen Tippfehler absichern.** `entrypoint.sh` kennt nur
    `baseline_only` und `dry_run` und verwirft alles andere still — derselbe
    Fehler, der auf der DB-Seite mit PR #3 behoben wurde (`Unknown

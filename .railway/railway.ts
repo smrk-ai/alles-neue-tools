@@ -8,18 +8,20 @@
 //
 // HERKUNFT: `railway config pull` gegen das Projekt `alles-neue-tools`,
 // Environment `production`, am 19.09.2026. Die Werte sind also aus Railway
-// gelesen, nicht abgeleitet — mit genau einer bewussten Abweichung, der
-// Cron-Zeit von `google-maps-hoi-an` (siehe dort).
+// gelesen, nicht abgeleitet. Zwei bewusste Abweichungen vom damaligen
+// Ist-Zustand, beide bei `google-maps-hoi-an`: die Cron-Zeit (angewendet) und
+// das `--city hoi-an` im Startbefehl (siehe dort).
 //
 // Anwenden (aus dem Verzeichnis, das mit dem Railway-Projekt verknuepft ist):
 //
 //   railway config plan     # zeigt den Diff gegen die LIVE-Umgebung, aendert nichts
 //   railway config apply    # wendet ihn an, fragt vor destruktiven Schritten nach
 //
-// `plan` muss GENAU EINE Aenderung zeigen: die Cron-Zeit von
-// `google-maps-hoi-an`. Alles andere im Diff ist ungeplant — dann wurde
-// entweder hier oder in Railway von Hand verstellt. Beides gehoert geklaert,
-// bevor `apply` laeuft.
+// STAND 19.09.2026: `apply` ist gelaufen. `railway config plan` meldet
+// „Your Railway configuration is already up to date" — Datei und Live-Umgebung
+// sind deckungsgleich. Zeigt `plan` kuenftig einen Diff, wurde entweder hier
+// oder in Railway von Hand verstellt. Das gehoert geklaert, bevor `apply`
+// wieder laeuft.
 
 import { defineRailway, github, preserve, project, service } from "railway/iac";
 
@@ -48,11 +50,19 @@ export default defineRailway(() => {
 
   // Der einzige Service im Regelbetrieb.
   //
-  // ACHTUNG — die eine Stelle, an der diese Datei bewusst NICHT den
-  // Ist-Zustand abbildet: Railway feuert heute `0 22 * * 1,3,5`, also
-  // Di/Do/Sa 05:00 vietnamesischer Zeit. Gewollt sind Mo/Mi/Fr 06:00 ICT.
+  // `--city hoi-an` MUSS im Startbefehl stehen. Ohne das Flag faellt
+  // `run-tool.ts` auf `--city all` zurueck (Zeile 91) und bildet daraus den
+  // Config-Slug `google-maps` statt `google-maps-hoi-an` (Zeile 115). In
+  // `tool_configs` steht `google-maps` auf is_active=false — der Lauf steigt
+  // dann mit Exit 0 aus, ohne Fehler und ohne `tool_runs`-Eintrag. Der Deploy
+  // waere gruen und das Tool trotzdem tot.
   //
-  // Umrechnung ICT (UTC+7, keine Sommerzeit) -> UTC:
+  // Bis zum 18.09.2026 hat `entrypoint.sh` das Flag aus `TOOL_CITY` angehaengt.
+  // Der IaC-Startbefehl umgeht `entrypoint.sh`, also muss es hier stehen.
+  // `TOOL_CITY` wird von `src/` nirgends gelesen und ist damit nur noch
+  // Dokumentation.
+  //
+  // Cron: Railway wertet in UTC aus. Umrechnung ICT (UTC+7, keine Sommerzeit):
   //   Mo 06:00 ICT = So 23:00 UTC   (cron-Wochentag 0)
   //   Mi 06:00 ICT = Di 23:00 UTC   (2)
   //   Fr 06:00 ICT = Do 23:00 UTC   (4)
@@ -61,7 +71,7 @@ export default defineRailway(() => {
   // lassen, waere um genau einen Tag daneben.
   const googleMapsHoiAn = service("google-maps-hoi-an", {
     source: allesNeueTools,
-    start: "npm run run-tool -- --slug google-maps",
+    start: "npm run run-tool -- --slug google-maps --city hoi-an",
     replicas,
     deploy: { cronSchedule: "0 23 * * 0,2,4", restartPolicyType: "NEVER" },
     networking: { privateNetworkEndpoint: "google-maps" },
