@@ -97,12 +97,28 @@ Blocker, an dem schon der Dependency-Audit haengengeblieben ist. Die Werte in
 Belegt:
 
 - **Der Deploy laeuft.** `google-maps-hoi-an` hat seit dem Audit-Merge
-  (30.08.2026) zehn gruene Laeufe hinter sich, zuletzt am 18.09.2026, je rund
-  20–27 Minuten. Der offene Punkt aus `DEPENDENCY-AUDIT.md` — „der Railway-Deploy
-  selbst ist nicht verifiziert" — ist damit durch Produktionsdaten erledigt.
-- **Die Cron-Zeit von `google-maps-hoi-an`** ist `0 22 * * 1,3,5` (UTC). Alle 52
+  (30.08.2026, 05:09 UTC) neun Laeufe hinter sich, alle gruen — vom 31.08. bis
+  zum 18.09.2026, je rund 20–27 Minuten. Der offene Punkt aus
+  `DEPENDENCY-AUDIT.md` — „der Railway-Deploy selbst ist nicht verifiziert" —
+  ist damit durch Produktionsdaten erledigt.
+- **Die Cron-Zeit von `google-maps-hoi-an`** ist `0 22 * * 1,3,5`. Alle 52
   Laeufe starteten Mo/Mi/Fr zwischen 22:00 und 22:05 UTC; die Streuung ist die
   Container-Startzeit.
+
+  **Railway wertet Cron in UTC aus** — nicht in der Zeitzone des Dashboards und
+  nicht in einer US-Zeitzone. Der Ausdruck oben ist also woertlich UTC. Was er
+  lokal bedeutet:
+
+  | Zone | lokale Zeit |
+  |------|-------------|
+  | UTC | Mo/Mi/Fr 22:00 |
+  | Vietnam (UTC+7) | **Di/Do/Sa 05:00** |
+  | Deutschland (CEST, UTC+2) | Di/Do/Sa 00:00 |
+  | US Eastern (UTC-4) | Mo/Mi/Fr 18:00 |
+
+  Wichtig ist der Tagessprung: lokal laeuft das Tool **Di/Do/Sa**, nicht
+  Mo/Mi/Fr. Wer eine Cron-Zeit von lokal nach UTC umrechnet, muss die
+  Wochentagsfelder mit verschieben — sonst stimmt die Stunde und der Tag nicht.
 - **`tsx` startet trotz blockiertem esbuild-Postinstall.** pnpm 10 fuehrt
   `esbuild@0.28.2`s Build-Script nicht aus; das Binary kommt aus dem
   Plattform-Paket `@esbuild/linux-x64`. `./node_modules/.bin/tsx --version`
@@ -116,10 +132,15 @@ Nicht belegt — gehoert in den `plan`-Diff:
 
 - **Die Cron-Zeiten der vier inaktiven Services.** Sie sind aus
   `tool_configs.schedule` uebernommen. Genau diese Spalte weicht bei
-  `google-maps-hoi-an` aber nachweislich von Railway ab (sie sagt dort
-  `0 6 * * 1,3,5`, Railway feuert um `0 22`). Die Spalte ist Anzeige im
-  Admin-UI und steuert nichts — als Quelle fuer die anderen vier ist sie
-  entsprechend schwach.
+  `google-maps-hoi-an` aber nachweislich von Railway ab: sie sagt
+  `0 6 * * 1,3,5`, Railway feuert `0 22 * * 1,3,5`. Gesteuert wird der Lauf von
+  Railway, nicht von der Spalte.
+
+  Die Differenz laesst sich mit keiner Zeitzone sauber wegrechnen: `0 6` wuerde
+  22:00 UTC nur in UTC+8 entsprechen, und dann waeren die Wochentage Di/Do/Sa
+  statt Mo/Mi/Fr. Denkbar ist also eine halbe Umrechnung (Stunde verschoben,
+  Wochentag nicht) — oder die Spalte wurde einfach nie nachgezogen. Solange das
+  nicht geklaert ist, ist sie als Quelle fuer die anderen vier schwach.
 - **Die Env-Variablen der Services.** Fuer `google-maps-hoi-an` sind sie aus dem
   Laufverhalten ableitbar, bei den anderen vier nicht. Ein leerer Diff bestaetigt
   sie; alles andere ist zu klaeren, bevor `apply` laeuft.

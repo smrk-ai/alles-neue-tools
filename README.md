@@ -240,6 +240,6 @@ worden. Details in `DEPENDENCY-AUDIT.md`.
 
 Der dort offen gebliebene Punkt — der Railway-Deploy selbst, mangels Zugang zur
 Railway-API nie verifiziert — ist inzwischen durch Produktionsdaten erledigt:
-`google-maps-hoi-an` hat seit dem Merge am 30.08.2026 zehn grüne Läufe hinter
-sich, zuletzt am 18.09.2026. Im Deploy-Log steht in Zeile 2 die aufgelöste
+`google-maps-hoi-an` hat seit dem Merge am 30.08.2026 neun Läufe hinter sich,
+alle grün, zuletzt am 18.09.2026. Im Deploy-Log steht in Zeile 2 die aufgelöste
 Runtime (`runtime: node v… | tsx v…`). Details in `RAILWAY.md`.
